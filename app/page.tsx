@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { getBeniDisponibili } from '@/lib/lists'
 import { COOP } from '@/lib/config'
 import ShopGrid from './ShopGrid'
@@ -18,7 +19,18 @@ export default async function ShopPage() {
   return (
     <main className="min-h-screen">
       <header className="bg-gradient-to-br from-brand-dark to-brand text-white">
-        <div className="mx-auto max-w-6xl px-6 py-12 text-center">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 pt-4">
+          <span className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">
+            Area riservata staff
+          </span>
+          <Link
+            href="/admin"
+            className="rounded-full bg-white px-4 py-2 text-sm font-bold text-brand-dark shadow-sm transition hover:bg-white/90"
+          >
+            Accedi · Admin
+          </Link>
+        </div>
+        <div className="mx-auto max-w-6xl px-6 pb-12 pt-6 text-center">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">{COOP.nome}</p>
           <h1 className="font-display mt-2 text-4xl font-bold sm:text-5xl">{COOP.progetto}</h1>
           <p className="mx-auto mt-4 max-w-2xl text-white/85">
