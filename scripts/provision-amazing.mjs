@@ -62,6 +62,12 @@ const LISTE = [
       { name: 'PdfUrl', text: {} },
     ],
   },
+  {
+    envKey: 'SP_LIST_ADMIN',
+    name: 'AmazingAdmin',
+    // Nessuna colonna extra: la colonna predefinita "Title" contiene l'email dell'admin.
+    columns: [],
+  },
 ]
 
 // --- carica .env.local se le env non sono già nell'ambiente ---

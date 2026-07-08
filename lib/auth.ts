@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth'
 import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id'
-import { adminEmails } from '@/lib/config'
+import { isAdmin } from '@/lib/lists'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -19,7 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async session({ session }) {
       if (session.user?.email) {
-        session.user.isAdmin = adminEmails().includes(session.user.email.toLowerCase())
+        session.user.isAdmin = await isAdmin(session.user.email)
       }
       return session
     },

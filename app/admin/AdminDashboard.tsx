@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import type { Bene, Prenotazione, StatoPagamento } from '@/types'
 
-type Tab = 'catalogo' | 'prenotazioni'
+type Tab = 'catalogo' | 'prenotazioni' | 'admin'
 
 const STATO_LABEL: Record<StatoPagamento, string> = {
   pending: 'In attesa',
@@ -30,8 +30,13 @@ export default function AdminDashboard() {
         <TabBtn active={tab === 'catalogo'} onClick={() => setTab('catalogo')}>
           Catalogo
         </TabBtn>
+        <TabBtn active={tab === 'admin'} onClick={() => setTab('admin')}>
+          Amministratori
+        </TabBtn>
       </div>
-      {tab === 'prenotazioni' ? <Prenotazioni /> : <Catalogo />}
+      {tab === 'prenotazioni' && <Prenotazioni />}
+      {tab === 'catalogo' && <Catalogo />}
+      {tab === 'admin' && <Amministratori />}
     </div>
   )
 }
@@ -325,5 +330,111 @@ function ActionBtn({
     <button onClick={onClick} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${cls}`}>
       {children}
     </button>
+  )
+}
+
+// ============================================================
+// AMMINISTRATORI
+// ============================================================
+
+function Amministratori() {
+  const [seed, setSeed] = useState<string[]>([])
+  const [admins, setAdmins] = useState<{ spItemId: string; email: string }[]>([])
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [msg, setMsg] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const res = await fetch('/api/admin/admins')
+    const data = await res.json()
+    setSeed(data.seed ?? [])
+    setAdmins(data.admins ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function aggiungi(e: React.FormEvent) {
+    e.preventDefault()
+    setMsg('')
+    const res = await fetch('/api/admin/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    const data = await res.json()
+    if (!res.ok) setMsg(data.error || 'Errore')
+    else {
+      setEmail('')
+      await load()
+    }
+  }
+
+  async function rimuovi(a: { spItemId: string; email: string }) {
+    if (!confirm(`Rimuovere l'amministratore ${a.email}?`)) return
+    await fetch(`/api/admin/admins/${a.spItemId}`, { method: 'DELETE' })
+    await load()
+  }
+
+  if (loading) return <p className="text-brand-darker/60">Caricamento…</p>
+
+  return (
+    <div className="max-w-2xl">
+      <form onSubmit={aggiungi} className="mb-6 flex gap-2 rounded-xl border border-brand/10 bg-white p-5">
+        <input
+          type="email"
+          value={email}
+          required
+          placeholder="nome.cognome@cooperativamirafiori.com"
+          onChange={(e) => setEmail(e.target.value)}
+          className="flex-1 rounded-lg border border-brand/20 px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        />
+        <button className="rounded-full bg-brand px-5 py-2 font-bold text-white hover:bg-brand-dark">
+          Aggiungi
+        </button>
+      </form>
+      {msg && <p className="mb-4 text-sm text-red-600">{msg}</p>}
+
+      <div className="overflow-hidden rounded-xl border border-brand/10 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-brand-bg text-left text-brand-darker/70">
+            <tr>
+              <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Origine</th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {seed.map((e) => (
+              <tr key={`seed-${e}`} className="border-t border-brand/5">
+                <td className="px-4 py-3">{e}</td>
+                <td className="px-4 py-3 text-brand-darker/50">fisso (env)</td>
+                <td className="px-4 py-3"></td>
+              </tr>
+            ))}
+            {admins
+              .filter((a) => !seed.includes(a.email.toLowerCase()))
+              .map((a) => (
+                <tr key={a.spItemId} className="border-t border-brand/5">
+                  <td className="px-4 py-3">{a.email}</td>
+                  <td className="px-4 py-3 text-brand-darker/50">lista</td>
+                  <td className="px-4 py-3 text-right">
+                    <ActionBtn variant="danger" onClick={() => rimuovi(a)}>
+                      Rimuovi
+                    </ActionBtn>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-xs text-brand-darker/50">
+        Gli admin &ldquo;fisso (env)&rdquo; sono definiti nella configurazione e non si rimuovono da qui.
+        Gli altri si aggiungono/rimuovono al volo, senza redeploy.
+      </p>
+    </div>
   )
 }

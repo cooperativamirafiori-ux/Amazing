@@ -27,9 +27,11 @@ import type { Bene, Prenotazione, NuovaPrenotazione, StatoPagamento } from '@/ty
 const SITE = () => process.env.SHAREPOINT_SITE_ID!
 const BENI = () => process.env.SP_LIST_BENI!
 const PREN = () => process.env.SP_LIST_PRENOTAZIONI!
+const ADMIN = () => process.env.SP_LIST_ADMIN || ''
 
 const beniBase = () => `/sites/${SITE()}/lists/${BENI()}/items`
 const prenBase = () => `/sites/${SITE()}/lists/${PREN()}/items`
+const adminBase = () => `/sites/${SITE()}/lists/${ADMIN()}/items`
 
 const PREFER_NON_INDEXED = {
   Prefer: 'HonorNonIndexedQueriesWarningMayFailRandomly',
@@ -299,4 +301,73 @@ export async function eliminaPrenotazione(spItemId: string): Promise<void> {
 async function getBeneByLogicalId(logicalId: string): Promise<Bene | null> {
   const beni = await getBeni()
   return beni.find((b) => b.id === logicalId) ?? null
+}
+
+// ============================================================
+// AMMINISTRATORI (lista SharePoint, colonna Title = email)
+// ============================================================
+
+export interface Amministratore {
+  spItemId: string
+  email: string
+}
+
+/** Emails admin dal seme env ADMIN_EMAILS (sempre valido, per il bootstrap). */
+export function adminEmailsSeed(): string[] {
+  return (process.env.ADMIN_EMAILS || 'dennis.maseri@cooperativamirafiori.com')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+/** Emails admin dalla lista SharePoint (vuoto se lista non configurata o errore). */
+export async function getAdminEmailsFromList(): Promise<string[]> {
+  if (!ADMIN()) return []
+  try {
+    const res = await graphGet<{ value: any[] }>(
+      `${adminBase()}?$expand=fields($select=Title)&$top=200`,
+      PREFER_NON_INDEXED
+    )
+    return res.value
+      .map((i) => String(i.fields?.Title ?? '').trim().toLowerCase())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/** True se l'email è admin: unione tra seme env e lista SharePoint. */
+export async function isAdmin(email: string): Promise<boolean> {
+  const e = email.trim().toLowerCase()
+  if (adminEmailsSeed().includes(e)) return true
+  return (await getAdminEmailsFromList()).includes(e)
+}
+
+/** Elenco admin gestibili dall'UI (solo quelli in lista; il seme env è fisso). */
+export async function listAdmins(): Promise<Amministratore[]> {
+  if (!ADMIN()) return []
+  const res = await graphGet<{ value: any[] }>(
+    `${adminBase()}?$expand=fields($select=Title)&$top=200`,
+    PREFER_NON_INDEXED
+  )
+  return res.value
+    .map((i) => ({ spItemId: String(i.id), email: String(i.fields?.Title ?? '').trim() }))
+    .filter((a) => a.email)
+}
+
+/** Aggiunge un admin alla lista (idempotente sull'email). */
+export async function addAdmin(email: string): Promise<Amministratore | { error: string }> {
+  if (!ADMIN()) return { error: 'Lista amministratori non configurata (SP_LIST_ADMIN mancante)' }
+  const e = email.trim().toLowerCase()
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return { error: 'Email non valida' }
+  const esistenti = await listAdmins()
+  const gia = esistenti.find((a) => a.email.toLowerCase() === e)
+  if (gia) return gia
+  const created = await graphPost<any>(adminBase(), { fields: { Title: e } })
+  return { spItemId: String(created.id), email: e }
+}
+
+export async function removeAdmin(spItemId: string): Promise<void> {
+  if (!ADMIN()) return
+  await graphDelete(`${adminBase()}/${spItemId}`)
 }
