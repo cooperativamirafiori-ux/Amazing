@@ -11,7 +11,7 @@ import {
   prossimoNumeroRicevuta,
 } from '@/lib/lists'
 import { renderRicevutaPdf, formatDataRicevuta } from '@/lib/ricevuta'
-import { inviaRicevutaEmail } from '@/lib/email'
+import { inviaRicevutaEmail, inviaEmailRitiro } from '@/lib/email'
 
 export async function completaPagamento(
   spItemId: string
@@ -28,6 +28,11 @@ export async function completaPagamento(
   const prenDaStampare = { ...pren, numeroRicevuta }
   const pdf = await renderRicevutaPdf(prenDaStampare, numeroRicevuta, dataStr)
   await inviaRicevutaEmail(prenDaStampare, numeroRicevuta, dataStr, pdf)
+  // Email informativa sul ritiro: non deve bloccare il completamento del
+  // pagamento se per qualche motivo fallisce (la ricevuta è già stata inviata).
+  await inviaEmailRitiro(prenDaStampare).catch((err) =>
+    console.error('[completaPagamento] invio email ritiro fallito:', err)
+  )
 
   await aggiornaPrenotazione(spItemId, { Stato: 'paid', NumeroRicevuta: numeroRicevuta })
   return { numeroRicevuta }

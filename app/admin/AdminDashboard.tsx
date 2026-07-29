@@ -1,9 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import type { Bene, Prenotazione, StatoPagamento } from '@/types'
 
 type Tab = 'catalogo' | 'prenotazioni' | 'admin'
+
+type SortKey = 'data' | 'stato' | 'consegna'
+type SortDir = 'asc' | 'desc'
+
+const STATO_ORDER: Record<StatoPagamento, number> = { pending: 0, paid: 1, annullato: 2 }
 
 const STATO_LABEL: Record<StatoPagamento, string> = {
   pending: 'In attesa',
@@ -14,6 +19,11 @@ const STATO_COLOR: Record<StatoPagamento, string> = {
   pending: 'bg-amber-100 text-amber-800',
   paid: 'bg-emerald-100 text-emerald-800',
   annullato: 'bg-red-100 text-red-700',
+}
+const METODO_LABEL: Record<string, string> = {
+  paypal: 'PayPal',
+  satispay: 'Satispay',
+  bonifico: 'Bonifico',
 }
 
 export default function AdminDashboard() {
@@ -68,6 +78,29 @@ function Prenotazioni() {
   const [rows, setRows] = useState<Prenotazione[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
+  const [sortBy, setSortBy] = useState<SortKey>('data')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+
+  function toggleSort(key: SortKey) {
+    if (sortBy === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(key)
+      setSortDir('asc')
+    }
+  }
+
+  const sortedRows = useMemo(() => {
+    const arr = [...rows]
+    arr.sort((a, b) => {
+      let cmp = 0
+      if (sortBy === 'data') cmp = new Date(a.data || 0).getTime() - new Date(b.data || 0).getTime()
+      else if (sortBy === 'stato') cmp = STATO_ORDER[a.stato] - STATO_ORDER[b.stato]
+      else if (sortBy === 'consegna') cmp = Number(a.consegnato) - Number(b.consegnato)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [rows, sortBy, sortDir])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -123,18 +156,31 @@ function Prenotazioni() {
         <table className="w-full text-sm">
           <thead className="bg-brand-bg text-left text-brand-darker/70">
             <tr>
-              <th className="px-4 py-3">Data</th>
+              <SortableTh label="Data" sortKey="data" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
               <th className="px-4 py-3">Ricevuta</th>
               <th className="px-4 py-3">Nominativo</th>
               <th className="px-4 py-3">Bene</th>
               <th className="px-4 py-3 text-right">Importo</th>
-              <th className="px-4 py-3">Stato pagamento</th>
-              <th className="px-4 py-3">Stato consegna</th>
+              <th className="px-4 py-3">Metodo</th>
+              <SortableTh
+                label="Stato pagamento"
+                sortKey="stato"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onClick={toggleSort}
+              />
+              <SortableTh
+                label="Stato consegna"
+                sortKey="consegna"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onClick={toggleSort}
+              />
               <th className="px-4 py-3">Azioni</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
+            {sortedRows.map((p) => (
               <tr key={p.spItemId} className="border-t border-brand/5">
                 <td className="px-4 py-3 whitespace-nowrap text-brand-darker/70">
                   {p.data ? new Date(p.data).toLocaleDateString('it-IT') : '—'}
@@ -145,6 +191,7 @@ function Prenotazioni() {
                 </td>
                 <td className="px-4 py-3">{p.goodName}</td>
                 <td className="px-4 py-3 text-right font-semibold">€ {Number(p.importo).toFixed(2)}</td>
+                <td className="px-4 py-3 text-brand-darker/70">{METODO_LABEL[p.metodo] || p.metodo || '—'}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATO_COLOR[p.stato]}`}>
                     {STATO_LABEL[p.stato]}
@@ -155,12 +202,14 @@ function Prenotazioni() {
                     <button
                       onClick={() => setConsegna(p, false)}
                       title="Annulla consegna"
-                      className="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-bold text-brand-dark transition hover:bg-brand/20"
+                      className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200"
                     >
                       Consegnato
                     </button>
                   ) : p.stato === 'paid' ? (
-                    <ActionBtn onClick={() => setConsegna(p, true)}>Segna consegnato</ActionBtn>
+                    <ActionBtn variant="danger" onClick={() => setConsegna(p, true)}>
+                      Da consegnare
+                    </ActionBtn>
                   ) : (
                     <span className="text-xs text-brand-darker/40">—</span>
                   )}
@@ -186,7 +235,7 @@ function Prenotazioni() {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-brand-darker/50">
+                <td colSpan={9} className="px-4 py-8 text-center text-brand-darker/50">
                   Nessuna prenotazione.
                 </td>
               </tr>
@@ -353,6 +402,35 @@ function ActionBtn({
     <button onClick={onClick} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${cls}`}>
       {children}
     </button>
+  )
+}
+
+function SortableTh({
+  label,
+  sortKey,
+  sortBy,
+  sortDir,
+  onClick,
+}: {
+  label: string
+  sortKey: SortKey
+  sortBy: SortKey
+  sortDir: SortDir
+  onClick: (key: SortKey) => void
+}) {
+  const active = sortBy === sortKey
+  return (
+    <th className="px-4 py-3">
+      <button
+        onClick={() => onClick(sortKey)}
+        className={`inline-flex items-center gap-1 font-bold transition hover:text-brand-dark ${
+          active ? 'text-brand-dark' : ''
+        }`}
+      >
+        {label}
+        <span className="text-[10px]">{active ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span>
+      </button>
+    </th>
   )
 }
 

@@ -98,3 +98,50 @@ export async function inviaRicevutaEmail(
     saveToSentItems: true,
   })
 }
+
+function corpoRitiroHtml(): string {
+  return `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f0f6fb;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f6fb;padding:30px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(44,123,184,0.12);">
+<tr><td style="background:linear-gradient(135deg,#1a5a8a,#2C7BB8);padding:32px 40px;text-align:center;">
+  <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:0 0 6px;letter-spacing:2px;text-transform:uppercase;font-weight:700;">${COOP.nome}</p>
+  <h1 style="color:#fff;font-size:22px;margin:0;font-weight:700;">Grazie dell'ordine!</h1>
+</td></tr>
+<tr><td style="padding:36px 40px;">
+  <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 16px;">Grazie dell'ordine.</p>
+  <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 16px;">Nei prossimi 5 giorni riceverai una mail con le date e gli orari per il ritiro.</p>
+  <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 16px;">Ti chiediamo il favore di non chiamare in cooperativa prima di aver ricevuto la mail, a meno di estrema urgenza o problematiche particolari.</p>
+  <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 24px;">Ti ringraziamo per la comprensione.</p>
+  <p style="color:#1a3a52;font-size:15px;line-height:1.8;margin:0;font-weight:700;">Lo staff Amazing</p>
+</td></tr>
+<tr><td style="background:linear-gradient(135deg,#1a5a8a,#2C7BB8);padding:20px 40px;text-align:center;">
+  <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:0;font-weight:600;">${COOP.nome} · &quot;${COOP.motto}&quot;</p>
+  <p style="color:rgba(255,255,255,0.6);font-size:11px;margin:4px 0 0;">${COOP.sito}</p>
+</td></tr>
+</table></td></tr></table></body></html>`
+}
+
+/**
+ * Email informativa post-pagamento (distinta dalla ricevuta fiscale): avvisa
+ * il donatore che riceverà entro 5 giorni data/orario di ritiro e chiede di
+ * non chiamare in cooperativa prima di quella mail.
+ */
+export async function inviaEmailRitiro(p: Prenotazione): Promise<void> {
+  const sender = process.env.MAIL_SENDER_EMAIL
+  if (!sender) throw new Error('MAIL_SENDER_EMAIL non configurato')
+
+  const bcc = process.env.MAIL_BCC
+  const message: any = {
+    subject: `Grazie dell'ordine · ${COOP.progetto}`,
+    body: { contentType: 'HTML', content: corpoRitiroHtml() },
+    toRecipients: [{ emailAddress: { address: p.email } }],
+  }
+  if (bcc) message.bccRecipients = [{ emailAddress: { address: bcc } }]
+
+  await graphPost(`/users/${encodeURIComponent(sender)}/sendMail`, {
+    message,
+    saveToSentItems: true,
+  })
+}
