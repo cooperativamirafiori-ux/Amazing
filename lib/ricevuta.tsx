@@ -10,10 +10,12 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
   renderToBuffer,
 } from '@react-pdf/renderer'
 import { COOP, METODO_LABEL, BRAND } from '@/lib/config'
+import { FIRMA_RAPPRESENTANTE_PNG } from '@/lib/firma'
 import { importoInLettere } from '@/lib/importo-in-lettere'
 import type { Prenotazione } from '@/types'
 
@@ -36,6 +38,8 @@ const s = StyleSheet.create({
   legale: { fontSize: 9, color: BRAND.gray, lineHeight: 1.4, marginBottom: 5 },
   esente: { fontSize: 9, color: BRAND.gray, fontFamily: 'Helvetica-Bold', marginTop: 4 },
   firmaLabel: { fontSize: 10, color: BRAND.bluDarker, fontFamily: 'Helvetica-Bold', marginTop: 18, marginBottom: 6 },
+  // La firma poggia sulla linea: il marginBottom negativo compensa il marginTop della linea.
+  firmaImg: { width: 150, height: 82, marginLeft: 10, marginTop: 0, marginBottom: -24 },
   firmaLinea: { fontSize: 11, color: BRAND.lightGray, marginTop: 10 },
   privacy: { textAlign: 'center', fontSize: 8, color: BRAND.lightGray, fontFamily: 'Helvetica-Oblique', marginTop: 10 },
 })
@@ -106,6 +110,7 @@ function RicevutaDoc({
         </Text>
 
         <Text style={s.firmaLabel}>FIRMA LEGALE RAPPRESENTANTE</Text>
+        <Image src={FIRMA_RAPPRESENTANTE_PNG} style={s.firmaImg} />
         <Text style={s.firmaLinea}>____________________________________</Text>
 
         <View style={s.rule} />
