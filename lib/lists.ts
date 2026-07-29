@@ -12,7 +12,12 @@
  *                 Immagine, ImportoLibero(yes/no), IdLogico
  *   Prenotazioni: Title(id logico), NumeroRicevuta, GoodId, GoodName, Nome,
  *                 Cognome, Indirizzo, CodiceFiscale, Email, Importo, Data,
- *                 Metodo, Stato, PdfUrl
+ *                 Metodo, Stato, Consegnato(yes/no), PdfUrl
+ *
+ * Stato pagamento (Stato) e stato consegna (Consegnato) sono due colonne
+ * indipendenti: Stato riguarda solo il pagamento (auto per paypal/satispay,
+ * manuale per bonifico), Consegnato è un semplice flag impostato a mano
+ * dall'operatore quando il bene viene ritirato/consegnato.
  */
 
 import {
@@ -76,6 +81,7 @@ function mapPrenotazione(item: any): Prenotazione {
     data: String(f.Data ?? ''),
     metodo: String(f.Metodo ?? ''),
     stato: normalizeStatus(f.Stato),
+    consegnato: normalizeConsegnato(f),
     pdfUrl: String(f.PdfUrl ?? ''),
     satispayPaymentId: String(f.SatispayPaymentId ?? ''),
     satispayStatus: String(f.SatispayStatus ?? ''),
@@ -87,10 +93,24 @@ export function normalizeStatus(raw: unknown): StatoPagamento {
   const s = String(raw ?? '').trim().toLowerCase()
   if (['pending', 'pending_paypal', 'pending_satispay', 'pending_bonifico', 'in_attesa'].includes(s))
     return 'pending'
-  if (['paid', 'pagato'].includes(s)) return 'paid'
+  // "consegnato"/"delivered" sono valori storici dello Stato (quando consegna e
+  // pagamento erano un unico campo): implicano che il pagamento era completato.
+  if (['paid', 'pagato', 'consegnato', 'delivered'].includes(s)) return 'paid'
   if (['annullato', 'canceled', 'cancelled'].includes(s)) return 'annullato'
-  if (['consegnato', 'delivered'].includes(s)) return 'consegnato'
   return 'pending'
+}
+
+/**
+ * Stato consegna: colonna dedicata `Consegnato` (Sì/No). Per compatibilità con
+ * i dati storici, se manca la colonna ma lo Stato legacy era "consegnato" /
+ * "delivered", il bene si considera già consegnato.
+ */
+function normalizeConsegnato(f: Record<string, unknown>): boolean {
+  const v = f.Consegnato
+  if (v === true) return true
+  if (typeof v === 'string' && v.trim().toLowerCase() === 'true') return true
+  const legacyStato = String(f.Stato ?? '').trim().toLowerCase()
+  return legacyStato === 'consegnato' || legacyStato === 'delivered'
 }
 
 // ============================================================
@@ -182,7 +202,7 @@ async function adjustVenduti(spItemId: string, delta: number): Promise<Bene> {
 // ============================================================
 
 const PREN_SELECT =
-  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,PdfUrl,SatispayPaymentId,SatispayStatus,PaypalOrderId)'
+  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,Consegnato,PdfUrl,SatispayPaymentId,SatispayStatus,PaypalOrderId)'
 
 export async function getPrenotazioni(): Promise<Prenotazione[]> {
   const res = await graphGet<{ value: any[] }>(
@@ -272,6 +292,7 @@ export async function aggiornaPrenotazione(
   spItemId: string,
   fields: {
     Stato?: string
+    Consegnato?: boolean
     NumeroRicevuta?: string
     PdfUrl?: string
     SatispayPaymentId?: string
@@ -329,6 +350,20 @@ export async function cambiaStato(
     const bene = await getBeneByLogicalId(pren.goodId)
     if (bene) await adjustVenduti(bene.spItemId, -1).catch(() => {})
   }
+  return (await getPrenotazioneBySpId(spItemId))!
+}
+
+/**
+ * Segna/annulla la consegna del bene. Indipendente dallo Stato di pagamento:
+ * è un flag impostato a mano dall'operatore quando il donatore ritira il bene.
+ */
+export async function cambiaConsegna(
+  spItemId: string,
+  consegnato: boolean
+): Promise<Prenotazione | { error: string }> {
+  const pren = await getPrenotazioneBySpId(spItemId)
+  if (!pren) return { error: 'Prenotazione non trovata' }
+  await aggiornaPrenotazione(spItemId, { Consegnato: consegnato })
   return (await getPrenotazioneBySpId(spItemId))!
 }
 

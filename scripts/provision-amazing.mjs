@@ -59,6 +59,7 @@ const LISTE = [
       { name: 'Data', dateTime: { format: 'dateTime', displayAs: 'standard' } },
       { name: 'Metodo', text: {} },
       { name: 'Stato', text: {} },
+      { name: 'Consegnato', boolean: {} },
       { name: 'PdfUrl', text: {} },
       { name: 'SatispayPaymentId', text: {} },
       { name: 'SatispayStatus', text: {} },

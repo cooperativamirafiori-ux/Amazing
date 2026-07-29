@@ -49,7 +49,8 @@ devono corrispondere: crea la colonna con quel nome, senza spazi).
 | Importo | Numero/Valuta | |
 | Data | Data e ora | |
 | Metodo | Testo/Scelta | paypal/satispay/bonifico |
-| Stato | Testo/Scelta | pending/paid/annullato/consegnato |
+| Stato | Testo/Scelta | pending/paid/annullato (solo pagamento) |
+| Consegnato | Sì/No | consegna del bene, indipendente dal pagamento |
 | PdfUrl | Testo/Iperlink | (riservato) |
 | SatispayPaymentId | Testo | id pagamento Satispay |
 | SatispayStatus | Testo | PENDING/ACCEPTED/CANCELED |

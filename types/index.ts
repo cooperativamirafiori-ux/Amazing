@@ -16,7 +16,8 @@ export interface Bene {
   available: number
 }
 
-export type StatoPagamento = 'pending' | 'paid' | 'annullato' | 'consegnato'
+/** Riguarda esclusivamente il pagamento (non la consegna del bene). */
+export type StatoPagamento = 'pending' | 'paid' | 'annullato'
 
 export type MetodoPagamento = 'paypal' | 'satispay' | 'bonifico'
 
@@ -35,6 +36,8 @@ export interface Prenotazione {
   data: string
   metodo: MetodoPagamento | string
   stato: StatoPagamento
+  /** Consegna del bene: indipendente dallo stato di pagamento, gestita a mano dall'operatore. */
+  consegnato: boolean
   pdfUrl: string
   /** ID pagamento Satispay (Business API) — valorizzato per metodo satispay */
   satispayPaymentId: string

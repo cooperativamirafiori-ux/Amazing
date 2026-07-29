@@ -9,13 +9,11 @@ const STATO_LABEL: Record<StatoPagamento, string> = {
   pending: 'In attesa',
   paid: 'Pagato',
   annullato: 'Annullato',
-  consegnato: 'Consegnato',
 }
 const STATO_COLOR: Record<StatoPagamento, string> = {
   pending: 'bg-amber-100 text-amber-800',
   paid: 'bg-emerald-100 text-emerald-800',
   annullato: 'bg-red-100 text-red-700',
-  consegnato: 'bg-brand/10 text-brand-dark',
 }
 
 export default function AdminDashboard() {
@@ -104,6 +102,18 @@ function Prenotazioni() {
     await load()
   }
 
+  async function setConsegna(p: Prenotazione, consegnato: boolean) {
+    setMsg('')
+    const res = await fetch(`/api/admin/prenotazioni/${p.spItemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consegnato }),
+    })
+    const data = await res.json()
+    if (!res.ok) setMsg(data.error || 'Errore')
+    await load()
+  }
+
   if (loading) return <p className="text-brand-darker/60">Caricamento…</p>
 
   return (
@@ -118,7 +128,8 @@ function Prenotazioni() {
               <th className="px-4 py-3">Nominativo</th>
               <th className="px-4 py-3">Bene</th>
               <th className="px-4 py-3 text-right">Importo</th>
-              <th className="px-4 py-3">Stato</th>
+              <th className="px-4 py-3">Stato pagamento</th>
+              <th className="px-4 py-3">Stato consegna</th>
               <th className="px-4 py-3">Azioni</th>
             </tr>
           </thead>
@@ -140,12 +151,24 @@ function Prenotazioni() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
+                  {p.consegnato ? (
+                    <button
+                      onClick={() => setConsegna(p, false)}
+                      title="Annulla consegna"
+                      className="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-bold text-brand-dark transition hover:bg-brand/20"
+                    >
+                      Consegnato
+                    </button>
+                  ) : p.stato === 'paid' ? (
+                    <ActionBtn onClick={() => setConsegna(p, true)}>Segna consegnato</ActionBtn>
+                  ) : (
+                    <span className="text-xs text-brand-darker/40">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1.5">
                     {p.stato === 'pending' && (
                       <ActionBtn onClick={() => setStato(p, 'paid')}>Conferma pagamento</ActionBtn>
-                    )}
-                    {p.stato === 'paid' && (
-                      <ActionBtn onClick={() => setStato(p, 'consegnato')}>Consegnato</ActionBtn>
                     )}
                     {p.stato !== 'annullato' && (
                       <ActionBtn variant="warn" onClick={() => setStato(p, 'annullato')}>
@@ -163,7 +186,7 @@ function Prenotazioni() {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-brand-darker/50">
+                <td colSpan={8} className="px-4 py-8 text-center text-brand-darker/50">
                   Nessuna prenotazione.
                 </td>
               </tr>

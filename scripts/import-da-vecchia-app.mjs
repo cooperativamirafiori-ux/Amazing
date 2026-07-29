@@ -100,10 +100,15 @@ function parseCSV(text) {
 function normalizeStatus(raw) {
   const s = String(raw || '').trim().toLowerCase()
   if (['pending', 'pending_paypal', 'pending_satispay', 'pending_bonifico', 'in_attesa'].includes(s)) return 'pending'
-  if (['paid', 'pagato'].includes(s)) return 'paid'
+  // "consegnato"/"delivered" nel vecchio DB erano un unico stato: implicano pagamento avvenuto,
+  // la consegna vera e propria va ora nella colonna separata Consegnato.
+  if (['paid', 'pagato', 'consegnato', 'delivered'].includes(s)) return 'paid'
   if (['annullato', 'canceled', 'cancelled'].includes(s)) return 'annullato'
-  if (['consegnato', 'delivered'].includes(s)) return 'consegnato'
   return 'pending'
+}
+
+function normalizeConsegnato(raw) {
+  return ['consegnato', 'delivered'].includes(String(raw || '').trim().toLowerCase())
 }
 
 const num = (v) => Number(String(v ?? '').replace(/[^\d.,-]/g, '').replace(',', '.')) || 0
@@ -246,7 +251,7 @@ async function main() {
         GoodName: goodName ?? '', Nome: nome ?? '', Cognome: cognome ?? '',
         Indirizzo: indirizzo ?? '', CodiceFiscale: cf ?? '', Email: email ?? '',
         Importo: num(importo), Metodo: (metodo ?? '').toString().toLowerCase(),
-        Stato: st, PdfUrl: pdfUrl ?? '',
+        Stato: st, Consegnato: normalizeConsegnato(stato), PdfUrl: pdfUrl ?? '',
       }
       const iso = toISO(data)
       if (iso) fields.Data = iso

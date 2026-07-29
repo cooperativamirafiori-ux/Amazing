@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardAdmin } from '@/lib/api-guard'
-import { cambiaStato, eliminaPrenotazione, getPrenotazioneBySpId } from '@/lib/lists'
+import { cambiaConsegna, cambiaStato, eliminaPrenotazione, getPrenotazioneBySpId } from '@/lib/lists'
 import { completaPagamento } from '@/lib/completa'
 import type { StatoPagamento } from '@/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const STATI: StatoPagamento[] = ['pending', 'paid', 'annullato', 'consegnato']
+// Solo stato pagamento: "consegnato" non è più un valore di Stato, è la
+// colonna indipendente Consegnato (vedi ramo `consegnato` più sotto).
+const STATI: StatoPagamento[] = ['pending', 'paid', 'annullato']
 
 /**
- * PATCH: cambia stato. Se il nuovo stato è "paid", genera ricevuta + invia
- * email (completaPagamento), come faceva setBookingStatus nel backend GAS.
+ * PATCH: due campi indipendenti nel body.
+ * - `stato`: cambia lo stato pagamento. Se il nuovo stato è "paid", genera
+ *   ricevuta + invia email (completaPagamento), come faceva setBookingStatus
+ *   nel backend GAS. Uso tipico: conferma manuale di un bonifico (paypal e
+ *   satispay si aggiornano già da soli via callback/finalize).
+ * - `consegnato`: flag booleano per la consegna del bene, indipendente dal
+ *   pagamento e impostato a mano dall'operatore.
  */
 export async function PATCH(
   req: NextRequest,
@@ -21,8 +28,16 @@ export async function PATCH(
   if (g.error) return g.error
   try {
     const { spItemId } = await params
-    const { stato } = (await req.json()) as { stato: StatoPagamento }
-    if (!STATI.includes(stato)) {
+    const body = (await req.json()) as { stato?: StatoPagamento; consegnato?: boolean }
+
+    if (typeof body.consegnato === 'boolean') {
+      const res = await cambiaConsegna(spItemId, body.consegnato)
+      if ('error' in res) return NextResponse.json({ error: res.error }, { status: 400 })
+      return NextResponse.json({ ok: true, prenotazione: res })
+    }
+
+    const stato = body.stato
+    if (!stato || !STATI.includes(stato)) {
       return NextResponse.json({ error: 'Stato non valido' }, { status: 400 })
     }
 
