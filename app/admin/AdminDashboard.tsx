@@ -549,13 +549,20 @@ function Catalogo() {
           <p className="text-brand-darker/60">Caricamento…</p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-brand/10 bg-white">
-            <table className="w-full text-sm">
+            {/*
+              `table-fixed` + larghezze dichiarate: senza, i nomi lunghi e le
+              descrizioni allargavano la tabella oltre il contenitore, il prezzo
+              andava a capo e la colonna delle azioni finiva tagliata fuori.
+              Così la colonna Nome assorbe lo spazio residuo e la descrizione
+              viene troncata invece di spingere.
+            */}
+            <table className="w-full min-w-[36rem] table-fixed text-sm">
               <thead className="bg-brand-bg text-left text-brand-darker/70">
                 <tr>
                   <th className="px-4 py-3">Nome</th>
-                  <th className="px-4 py-3 text-right">Prezzo</th>
-                  <th className="px-4 py-3 text-right">Disp.</th>
-                  <th className="px-4 py-3"></th>
+                  <th className="w-24 px-4 py-3 text-right">Prezzo</th>
+                  <th className="w-20 px-4 py-3 text-right">Disp.</th>
+                  <th className="w-56 px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -567,20 +574,29 @@ function Catalogo() {
                     }`}
                   >
                     <td className="px-4 py-3">
-                      <span className="font-semibold text-brand-darker">{b.name}</span>
-                      {b.flexibleAmount && <span className="ml-2 text-xs text-brand/60">(libero)</span>}
+                      <div className="truncate font-semibold text-brand-darker" title={b.name}>
+                        {b.name}
+                        {b.flexibleAmount && (
+                          <span className="ml-2 text-xs font-normal text-brand/60">(libero)</span>
+                        )}
+                      </div>
                       {b.description && (
-                        <span className="mt-0.5 block max-w-md truncate text-xs text-brand-darker/50">
+                        <div
+                          className="mt-0.5 truncate text-xs text-brand-darker/50"
+                          title={b.description}
+                        >
                           {b.description}
-                        </span>
+                        </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">€ {b.price.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      € {b.price.toFixed(2)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
                       {b.available}/{b.quantity}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1.5">
+                      <div className="flex flex-nowrap justify-end gap-1.5">
                         <ActionBtn onClick={() => apriModifica(b)}>Modifica</ActionBtn>
                         <ActionBtn variant="danger" onClick={() => elimina(b)}>
                           Elimina
@@ -663,7 +679,7 @@ function ActionBtn({
     <button
       onClick={onClick}
       title={title}
-      className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${cls}`}
+      className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition ${cls}`}
     >
       {children}
     </button>
