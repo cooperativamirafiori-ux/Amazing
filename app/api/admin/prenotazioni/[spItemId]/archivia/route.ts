@@ -13,23 +13,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardAdmin } from '@/lib/api-guard'
 import { getPrenotazioneBySpId, aggiornaPrenotazione } from '@/lib/lists'
-import { renderRicevutaPdf, formatDataRicevuta } from '@/lib/ricevuta'
+import { renderRicevutaPdf } from '@/lib/ricevuta'
 import { archiviaRicevuta, archivioAbilitato } from '@/lib/archivio'
+import { annoRicevuta, dataRicevutaDa } from '@/lib/completa'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-/**
- * Anno di competenza della ricevuta: si legge dal numero (`RIC-2026-AMZ-0001`),
- * così una ricevuta del 2026 riarchiviata nel 2027 resta nella cartella 2026.
- * Fallback: data della prenotazione, poi anno corrente.
- */
-function annoRicevuta(numeroRicevuta: string, data: string): number {
-  const m = numeroRicevuta.match(/^RIC-(\d{4})-/)
-  if (m) return Number(m[1])
-  const d = new Date(data)
-  return isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear()
-}
 
 export async function POST(
   _req: NextRequest,
@@ -58,12 +47,8 @@ export async function POST(
       )
     }
 
-    // Il PDF viene rigenerato: la data mostrata è quella della prenotazione
-    // (l'unica disponibile a posteriori, coincide con la data pagamento per
-    // PayPal e Satispay; per i bonifici confermati a mano può differire).
-    const d = new Date(pren.data)
-    const dataStr = formatDataRicevuta(isNaN(d.getTime()) ? new Date() : d)
-    const pdf = await renderRicevutaPdf(pren, pren.numeroRicevuta, dataStr)
+    // Il PDF viene rigenerato (vedi dataRicevutaDa per il limite sulla data).
+    const pdf = await renderRicevutaPdf(pren, pren.numeroRicevuta, dataRicevutaDa(pren))
 
     const res = await archiviaRicevuta({
       pdf,

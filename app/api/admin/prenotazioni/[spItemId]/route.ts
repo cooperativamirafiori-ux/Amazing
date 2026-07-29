@@ -49,7 +49,8 @@ export async function PATCH(
       return NextResponse.json({
         ok: true,
         numeroRicevuta: res.numeroRicevuta,
-        avvisoArchivio: res.avvisoArchivio,
+        giaPagata: res.giaPagata,
+        avvisi: res.avvisi,
       })
     }
 

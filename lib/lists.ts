@@ -302,6 +302,57 @@ export async function prossimoNumeroRicevuta(): Promise<string> {
   return `RIC-${anno}-AMZ-${String(max + 1).padStart(4, '0')}`
 }
 
+/**
+ * Marca la prenotazione come pagata **vincendo una corsa**: scrive
+ * `Stato = paid` + `NumeroRicevuta` con `If-Match` sull'ETag dell'item.
+ *
+ * Serve perché su Satispay `finalize` (ritorno dell'utente nel browser) e
+ * `callback` (server-to-server) partono praticamente nello stesso istante: è il
+ * caso normale, non un caso limite. Con un semplice "leggi lo stato e poi
+ * scrivi" entrambe le chiamate passerebbero il controllo e genererebbero due
+ * ricevute con due numeri diversi.
+ *
+ * Ritorna:
+ *  - `{ vinto: true }`  → chi ha chiamato è il proprietario della transizione e
+ *                         deve procedere con PDF, email e archiviazione;
+ *  - `{ vinto: false }` → un altro processo (o una chiamata precedente) ha già
+ *                         segnato il pagamento: non fare nulla, la ricevuta è
+ *                         già stata gestita. `numeroRicevuta` è quello vincente.
+ *
+ * Sul 412 (ETag cambiato) si rilegge una volta per riportare il numero vincente
+ * invece di ritentare: se qualcuno ha scritto in mezzo, la transizione a `paid`
+ * è la sua e va rispettata.
+ */
+export async function marcaPagata(
+  spItemId: string,
+  numeroRicevuta: string
+): Promise<{ vinto: boolean; numeroRicevuta: string }> {
+  const item = await graphGet<any>(`${prenBase()}/${spItemId}?${PREN_SELECT}`)
+  const pren = mapPrenotazione(item)
+
+  // Già pagata: nessuna corsa da vincere.
+  if (pren.stato === 'paid') {
+    return { vinto: false, numeroRicevuta: pren.numeroRicevuta || numeroRicevuta }
+  }
+
+  const etag = item['@odata.etag'] as string | undefined
+  const { status } = await graphPatchStatus(
+    `${prenBase()}/${spItemId}/fields`,
+    { Stato: 'paid', NumeroRicevuta: pren.numeroRicevuta || numeroRicevuta },
+    etag ? { 'If-Match': etag } : undefined
+  )
+
+  if (status === 412) {
+    const dopo = await getPrenotazioneBySpId(spItemId)
+    return {
+      vinto: false,
+      numeroRicevuta: dopo?.numeroRicevuta || numeroRicevuta,
+    }
+  }
+
+  return { vinto: true, numeroRicevuta: pren.numeroRicevuta || numeroRicevuta }
+}
+
 /** Aggiorna stato e (opzionale) numero ricevuta / url pdf / dati pagamento. */
 export async function aggiornaPrenotazione(
   spItemId: string,

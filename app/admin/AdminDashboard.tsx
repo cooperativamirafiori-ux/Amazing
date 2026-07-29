@@ -78,7 +78,7 @@ function Prenotazioni() {
   const [rows, setRows] = useState<Prenotazione[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
-  /** spItemId della riga con un'operazione lenta in corso (archiviazione). */
+  /** Chiave "<spItemId>:<azione>" dell'operazione lenta in corso. */
   const [busy, setBusy] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortKey>('data')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -127,16 +127,31 @@ function Prenotazioni() {
     })
     const data = await res.json()
     if (!res.ok) setMsg(data.error || 'Errore')
-    else if (data.avvisoArchivio)
-      setMsg(`Ricevuta ${data.numeroRicevuta} inviata a ${p.email} — ${data.avvisoArchivio}`)
+    else if (data.avvisi?.length)
+      // Il pagamento è registrato: gli avvisi riguardano email/PDF/archiviazione.
+      setMsg(`Pagamento registrato (${data.numeroRicevuta}) — ${data.avvisi.join(' · ')}`)
+    else if (data.giaPagata) setMsg(`Già registrata come pagata (${data.numeroRicevuta}).`)
     else if (data.numeroRicevuta) setMsg(`Ricevuta ${data.numeroRicevuta} inviata a ${p.email}`)
+    await load()
+  }
+
+  /** Rigenera il PDF, lo reinvia al donatore e ne salva la copia. */
+  async function reinvia(p: Prenotazione) {
+    if (!confirm(`Reinviare la ricevuta ${p.numeroRicevuta} a ${p.email}?`)) return
+    setMsg('')
+    setBusy(`${p.spItemId}:reinvia`)
+    const res = await fetch(`/api/admin/prenotazioni/${p.spItemId}/reinvia`, { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    setBusy(null)
+    if (!res.ok) setMsg(data.error || 'Errore durante il reinvio')
+    else setMsg(`Ricevuta ${data.numeroRicevuta} reinviata a ${data.email}`)
     await load()
   }
 
   /** Rigenera il PDF e salva/sovrascrive la copia nella cartella SharePoint. */
   async function archivia(p: Prenotazione) {
     setMsg('')
-    setBusy(p.spItemId)
+    setBusy(`${p.spItemId}:archivia`)
     const res = await fetch(`/api/admin/prenotazioni/${p.spItemId}/archivia`, { method: 'POST' })
     const data = await res.json().catch(() => ({}))
     setBusy(null)
@@ -255,16 +270,24 @@ function Prenotazioni() {
                     {p.stato === 'pending' && (
                       <ActionBtn onClick={() => setStato(p, 'paid')}>Conferma pagamento</ActionBtn>
                     )}
+                    {p.stato === 'paid' && (
+                      <ActionBtn
+                        onClick={() => reinvia(p)}
+                        title={`Rigenera la ricevuta e reinviala a ${p.email}`}
+                      >
+                        {busy === `${p.spItemId}:reinvia` ? 'Invio…' : 'Reinvia ricevuta'}
+                      </ActionBtn>
+                    )}
                     {p.numeroRicevuta && (
                       <ActionBtn
                         onClick={() => archivia(p)}
                         title={
                           p.pdfUrl
-                            ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint'
-                            : 'Salva la copia del PDF su SharePoint'
+                            ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint (senza email)'
+                            : 'Salva la copia del PDF su SharePoint (senza email)'
                         }
                       >
-                        {busy === p.spItemId
+                        {busy === `${p.spItemId}:archivia`
                           ? 'Archiviazione…'
                           : p.pdfUrl
                             ? 'Riarchivia'
