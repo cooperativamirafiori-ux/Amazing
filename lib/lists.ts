@@ -387,15 +387,57 @@ export async function getPrenotazioneBySatispayPaymentId(
 /**
  * Rilascia il pezzo riservato da una prenotazione non pagata (Venduti-1) e la
  * annulla. Usato quando Satispay/PayPal riportano il pagamento come annullato.
+ *
+ * Non lancia, ma **segnala** se il decremento di Venduti è fallito: prima
+ * l'errore veniva ingoiato con `.catch(() => {})` e il pezzo restava bloccato
+ * senza che nessuno lo sapesse.
  */
-export async function annullaERilascia(spItemId: string): Promise<void> {
+export async function annullaERilascia(
+  spItemId: string
+): Promise<{ rilasciato: boolean; avviso?: string }> {
   const pren = await getPrenotazioneBySpId(spItemId)
-  if (!pren) return
+  if (!pren) return { rilasciato: false, avviso: 'Prenotazione non trovata' }
+
+  let rilasciato = false
+  let avviso: string | undefined
+
   if (pren.stato !== 'annullato') {
     const bene = await getBeneByLogicalId(pren.goodId)
-    if (bene) await adjustVenduti(bene.spItemId, -1).catch(() => {})
+    if (!bene) {
+      avviso = `Bene ${pren.goodId} non trovato: disponibilità NON ripristinata`
+    } else {
+      try {
+        await adjustVenduti(bene.spItemId, -1)
+        rilasciato = true
+      } catch (err: any) {
+        avviso = `Disponibilità di "${bene.name}" NON ripristinata: ${err?.message ?? err}`
+      }
+    }
   }
+
   await aggiornaPrenotazione(spItemId, { Stato: 'annullato' })
+  if (avviso) console.error('[annullaERilascia]', spItemId, avviso)
+  return { rilasciato, avviso }
+}
+
+/**
+ * Prenotazioni ancora `pending` con pagamento online (PayPal/Satispay) più
+ * vecchie di `minuti`, cioè quelle che tengono bloccato un pezzo senza che il
+ * pagamento sia mai stato confermato.
+ *
+ * I **bonifici** sono esclusi di proposito: per loro è corretto che la
+ * prenotazione resti in sospeso finché non arriva il denaro e un operatore
+ * conferma a mano.
+ */
+export async function getPendingDaVerificare(minuti: number): Promise<Prenotazione[]> {
+  const limite = Date.now() - minuti * 60_000
+  return (await getPrenotazioni()).filter((p) => {
+    if (p.stato !== 'pending') return false
+    if (p.metodo !== 'paypal' && p.metodo !== 'satispay') return false
+    const t = new Date(p.data).getTime()
+    // Senza data valida non si può dire se è scaduta: meglio lasciarla stare.
+    return !isNaN(t) && t < limite
+  })
 }
 
 /**

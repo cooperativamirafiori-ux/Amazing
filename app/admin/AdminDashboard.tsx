@@ -178,10 +178,41 @@ function Prenotazioni() {
     await load()
   }
 
+  /**
+   * Chiede a PayPal/Satispay lo stato reale delle prenotazioni rimaste in
+   * sospeso e le chiude. Lo fa anche il cron ogni 15 minuti: questo pulsante
+   * serve per non aspettare (e come piano B se il cron non è attivo).
+   */
+  async function verificaPending() {
+    setMsg('')
+    setBusy('verifica')
+    const res = await fetch('/api/cron/verifica-pending', { method: 'POST' })
+    const d = await res.json().catch(() => ({}))
+    setBusy(null)
+    if (!res.ok) setMsg(d.error || 'Errore durante la verifica')
+    else if (!d.trovate) setMsg('Nessuna prenotazione in sospeso da verificare.')
+    else
+      setMsg(
+        `Verificate ${d.esaminate} di ${d.trovate}: ${d.completate} completate, ` +
+          `${d.rilasciate} rilasciate, ${d.inAttesa} ancora in corso, ${d.errori} errori.` +
+          (d.restanti ? ` Restano ${d.restanti}: rilancia per continuare.` : '')
+      )
+    await load()
+  }
+
   if (loading) return <p className="text-brand-darker/60">Caricamento…</p>
 
   return (
     <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-brand-darker/60">
+          Le prenotazioni PayPal/Satispay non pagate vengono verificate presso il provider e chiuse
+          automaticamente ogni 15 minuti.
+        </p>
+        <ActionBtn onClick={verificaPending} title="Verifica subito, senza attendere il controllo automatico">
+          {busy === 'verifica' ? 'Verifica in corso…' : 'Verifica pagamenti in sospeso'}
+        </ActionBtn>
+      </div>
       {msg && <p className="mb-4 rounded-lg bg-brand/10 px-4 py-3 text-sm text-brand-dark">{msg}</p>}
       <div className="overflow-x-auto rounded-xl border border-brand/10 bg-white">
         <table className="w-full text-sm">

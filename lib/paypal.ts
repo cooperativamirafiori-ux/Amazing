@@ -77,6 +77,36 @@ export async function createPaypalOrder(args: {
   return (await res.json()) as PaypalOrder
 }
 
+/**
+ * Legge un ordine PayPal. Usato dalla verifica delle prenotazioni in sospeso,
+ * per sapere se il donatore ha approvato il pagamento senza tornare sul sito.
+ *
+ * Stati rilevanti:
+ *   CREATED    → ordine creato, donatore non ha ancora approvato
+ *   APPROVED   → approvato dal donatore ma NON catturato: i soldi non sono
+ *                ancora stati prelevati, serve la capture
+ *   COMPLETED  → già catturato
+ *   VOIDED     → annullato
+ *
+ * `scaduto: true` quando PayPal risponde 404: gli ordini non catturati vengono
+ * dismessi dopo qualche ora, ed è una risposta definitiva (niente incasso
+ * possibile), quindi il pezzo si può rilasciare.
+ */
+export async function getPaypalOrder(
+  orderId: string
+): Promise<{ order: PaypalOrder | null; scaduto: boolean }> {
+  const token = await getAccessToken()
+  const res = await fetch(`${apiBase()}/v2/checkout/orders/${encodeURIComponent(orderId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  if (res.status === 404) return { order: null, scaduto: true }
+  if (!res.ok) {
+    throw new Error(`PayPal GET order ${orderId} failed (${res.status}): ${await res.text()}`)
+  }
+  return { order: (await res.json()) as PaypalOrder, scaduto: false }
+}
+
 export interface PaypalCapture {
   status?: string
   purchase_units?: any[]
