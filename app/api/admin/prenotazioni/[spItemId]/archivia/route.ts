@@ -46,6 +46,15 @@ export async function POST(
         { status: 400 }
       )
     }
+    // Le prenotazioni importate dalla vecchia app hanno un numero ricevuta anche
+    // da `pending`: archiviare il PDF di una donazione non ancora incassata
+    // metterebbe una ricevuta fiscale non dovuta nella cartella della Segreteria.
+    if (pren.stato !== 'paid') {
+      return NextResponse.json(
+        { error: 'La prenotazione non è pagata: conferma prima il pagamento.' },
+        { status: 400 }
+      )
+    }
 
     // Il PDF viene rigenerato (vedi dataRicevutaDa per il limite sulla data).
     const pdf = await renderRicevutaPdf(pren, pren.numeroRicevuta, dataRicevutaDa(pren))

@@ -327,13 +327,15 @@ function Prenotazioni() {
                 sortDir={sortDir}
                 onClick={toggleSort}
               />
-              <th className="px-4 py-3">Azioni</th>
+              {/* Larghezza dichiarata: senza, il browser comprimeva la colonna
+                  sotto la misura dei pulsanti e le etichette venivano tagliate. */}
+              <th className="w-40 px-4 py-3">Azioni</th>
             </tr>
           </thead>
           <tbody>
             {sortedRows.map((p) => (
-              <tr key={p.spItemId} className="border-t border-brand/5">
-                <td className="px-4 py-3 whitespace-nowrap text-brand-darker/70">
+              <tr key={p.spItemId} className="border-t border-brand/5 [&>td]:align-top">
+                <td className="whitespace-nowrap px-4 py-3 text-brand-darker/70">
                   {p.data ? new Date(p.data).toLocaleDateString('it-IT') : '—'}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">
@@ -343,17 +345,23 @@ function Prenotazioni() {
                   {p.nome} {p.cognome}
                 </td>
                 <td className="px-4 py-3">{p.goodName}</td>
-                <td className="px-4 py-3 text-right font-semibold">€ {Number(p.importo).toFixed(2)}</td>
-                <td className="px-4 py-3 text-brand-darker/70">{METODO_LABEL[p.metodo] || p.metodo || '—'}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right font-semibold">
+                  € {Number(p.importo).toFixed(2)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-brand-darker/70">
+                  {METODO_LABEL[p.metodo] || p.metodo || '—'}
+                </td>
                 <td className="px-4 py-3">
                   <BadgeStato stato={p.stato} />
                 </td>
                 <td className="px-4 py-3">
                   <ConsegnaControl p={p} onChange={setConsegna} />
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-1.5">
+                <td className="px-4 py-3 align-top">
+                  {/* In colonna e a piena larghezza: pulsanti allineati e mai tagliati. */}
+                  <div className="flex flex-col items-stretch gap-1.5">
                     <AzioniPrenotazione
+                      piena
                       p={p}
                       busy={busy}
                       onStato={setStato}
@@ -477,8 +485,12 @@ function AzioniPrenotazione({
   return (
     <>
       {p.stato === 'pending' && (
-        <ActionBtn className={w} onClick={() => onStato(p, 'paid')}>
-          Conferma pagamento
+        <ActionBtn
+          className={w}
+          onClick={() => onStato(p, 'paid')}
+          title={`Registra il pagamento e invia la ricevuta a ${p.email}`}
+        >
+          Conferma
         </ActionBtn>
       )}
       {p.stato === 'paid' && (
@@ -487,33 +499,49 @@ function AzioniPrenotazione({
           onClick={() => onReinvia(p)}
           title={`Rigenera la ricevuta e reinviala a ${p.email}`}
         >
-          {busy === `${p.spItemId}:reinvia` ? 'Invio…' : 'Reinvia ricevuta'}
+          {busy === `${p.spItemId}:reinvia` ? 'Invio…' : 'Reinvia'}
         </ActionBtn>
       )}
-      {p.numeroRicevuta && (
+      {/*
+        Solo su prenotazioni pagate: le righe importate dalla vecchia app hanno
+        un numero ricevuta anche da `pending`, e archiviare il PDF di una
+        donazione non ancora incassata metterebbe una ricevuta fiscale non
+        dovuta nella cartella della Segreteria.
+      */}
+      {p.stato === 'paid' && p.numeroRicevuta && (
         <ActionBtn
           className={w}
           onClick={() => onArchivia(p)}
           title={
             p.pdfUrl
-              ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint (senza email)'
-              : 'Salva la copia del PDF su SharePoint (senza email)'
+              ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint (senza inviare email)'
+              : 'Salva la copia del PDF su SharePoint (senza inviare email)'
           }
         >
           {busy === `${p.spItemId}:archivia`
             ? 'Archiviazione…'
             : p.pdfUrl
               ? 'Riarchivia'
-              : 'Archivia PDF'}
+              : 'Archivia'}
         </ActionBtn>
       )}
       {p.stato !== 'annullato' && (
-        <ActionBtn className={w} variant="warn" onClick={() => onStato(p, 'annullato')}>
+        <ActionBtn
+          className={w}
+          variant="warn"
+          onClick={() => onStato(p, 'annullato')}
+          title="Annulla la prenotazione e rimetti il bene a disponibile"
+        >
           Annulla
         </ActionBtn>
       )}
       {p.stato === 'annullato' && (
-        <ActionBtn className={w} variant="danger" onClick={() => onElimina(p)}>
+        <ActionBtn
+          className={w}
+          variant="danger"
+          onClick={() => onElimina(p)}
+          title="Elimina definitivamente la prenotazione"
+        >
           Elimina
         </ActionBtn>
       )}
