@@ -19,16 +19,18 @@ export default async function ShopPage() {
   return (
     <main className="min-h-screen">
       <header className="bg-gradient-to-br from-brand-dark to-brand text-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 pt-4">
-          <span className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">
-            Area riservata staff
-          </span>
-          <Link
-            href="/admin"
-            className="rounded-full bg-white px-4 py-2 text-sm font-bold text-brand-dark shadow-sm transition hover:bg-white/90"
-          >
-            Accedi · Admin
-          </Link>
+        <div className="mx-auto flex max-w-6xl justify-end px-6 pt-4">
+          <div className="flex flex-col items-end gap-1.5">
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">
+              Area riservata staff
+            </span>
+            <Link
+              href="/admin"
+              className="rounded-full bg-white px-4 py-2 text-sm font-bold text-brand-dark shadow-sm transition hover:bg-white/90"
+            >
+              Accedi · Admin
+            </Link>
+          </div>
         </div>
         <div className="mx-auto max-w-6xl px-6 pb-12 pt-6 text-center">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">{COOP.nome}</p>

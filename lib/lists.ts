@@ -120,10 +120,25 @@ function normalizeConsegnato(f: Record<string, unknown>): boolean {
 const BENE_SELECT =
   '$expand=fields($select=Title,Descrizione,Prezzo,Quantita,Venduti,Immagine,ImportoLibero,IdLogico)'
 
-/** Catalogo completo (admin). */
+/**
+ * Ordine di visualizzazione del catalogo:
+ * 1. i beni a **importo libero** (es. "Donazione Libera") sempre in testa;
+ * 2. poi tutti gli altri dal **più recente al più vecchio**.
+ *
+ * L'anzianità si ricava dall'ID item SharePoint, che è monotono crescente:
+ * un bene appena aggiunto ha sempre l'ID più alto della lista.
+ */
+export function ordinaCatalogo(beni: Bene[]): Bene[] {
+  return [...beni].sort((a, b) => {
+    if (a.flexibleAmount !== b.flexibleAmount) return a.flexibleAmount ? -1 : 1
+    return Number(b.spItemId) - Number(a.spItemId)
+  })
+}
+
+/** Catalogo completo (admin), già ordinato per visualizzazione. */
 export async function getBeni(): Promise<Bene[]> {
   const res = await graphGet<{ value: any[] }>(`${beniBase()}?${BENE_SELECT}&$top=500`)
-  return res.value.map(mapBene)
+  return ordinaCatalogo(res.value.map(mapBene))
 }
 
 /** Catalogo pubblico: solo beni con disponibilità > 0. */

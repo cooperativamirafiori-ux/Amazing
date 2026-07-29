@@ -46,7 +46,11 @@ export async function PATCH(
       if (!pren) return NextResponse.json({ error: 'Prenotazione non trovata' }, { status: 404 })
       const res = await completaPagamento(spItemId)
       if ('error' in res) return NextResponse.json({ error: res.error }, { status: 500 })
-      return NextResponse.json({ ok: true, numeroRicevuta: res.numeroRicevuta })
+      return NextResponse.json({
+        ok: true,
+        numeroRicevuta: res.numeroRicevuta,
+        avvisoArchivio: res.avvisoArchivio,
+      })
     }
 
     const res = await cambiaStato(spItemId, stato)

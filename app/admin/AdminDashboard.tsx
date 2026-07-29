@@ -78,6 +78,8 @@ function Prenotazioni() {
   const [rows, setRows] = useState<Prenotazione[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
+  /** spItemId della riga con un'operazione lenta in corso (archiviazione). */
+  const [busy, setBusy] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortKey>('data')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
@@ -125,7 +127,21 @@ function Prenotazioni() {
     })
     const data = await res.json()
     if (!res.ok) setMsg(data.error || 'Errore')
+    else if (data.avvisoArchivio)
+      setMsg(`Ricevuta ${data.numeroRicevuta} inviata a ${p.email} — ${data.avvisoArchivio}`)
     else if (data.numeroRicevuta) setMsg(`Ricevuta ${data.numeroRicevuta} inviata a ${p.email}`)
+    await load()
+  }
+
+  /** Rigenera il PDF e salva/sovrascrive la copia nella cartella SharePoint. */
+  async function archivia(p: Prenotazione) {
+    setMsg('')
+    setBusy(p.spItemId)
+    const res = await fetch(`/api/admin/prenotazioni/${p.spItemId}/archivia`, { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    setBusy(null)
+    if (!res.ok) setMsg(data.error || 'Errore durante l’archiviazione')
+    else setMsg(`Copia salvata su SharePoint: ${data.cartella}/${data.nomeFile}`)
     await load()
   }
 
@@ -185,7 +201,27 @@ function Prenotazioni() {
                 <td className="px-4 py-3 whitespace-nowrap text-brand-darker/70">
                   {p.data ? new Date(p.data).toLocaleDateString('it-IT') : '—'}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{p.numeroRicevuta || '—'}</td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  {p.numeroRicevuta ? (
+                    p.pdfUrl ? (
+                      <a
+                        href={p.pdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Apri il PDF archiviato su SharePoint"
+                        className="text-brand-dark underline hover:text-brand"
+                      >
+                        {p.numeroRicevuta}
+                      </a>
+                    ) : (
+                      <span title="Ricevuta emessa, copia su SharePoint non presente">
+                        {p.numeroRicevuta}
+                      </span>
+                    )
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {p.nome} {p.cognome}
                 </td>
@@ -218,6 +254,22 @@ function Prenotazioni() {
                   <div className="flex flex-wrap gap-1.5">
                     {p.stato === 'pending' && (
                       <ActionBtn onClick={() => setStato(p, 'paid')}>Conferma pagamento</ActionBtn>
+                    )}
+                    {p.numeroRicevuta && (
+                      <ActionBtn
+                        onClick={() => archivia(p)}
+                        title={
+                          p.pdfUrl
+                            ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint'
+                            : 'Salva la copia del PDF su SharePoint'
+                        }
+                      >
+                        {busy === p.spItemId
+                          ? 'Archiviazione…'
+                          : p.pdfUrl
+                            ? 'Riarchivia'
+                            : 'Archivia PDF'}
+                      </ActionBtn>
                     )}
                     {p.stato !== 'annullato' && (
                       <ActionBtn variant="warn" onClick={() => setStato(p, 'annullato')}>
@@ -541,10 +593,12 @@ function ActionBtn({
   children,
   onClick,
   variant = 'default',
+  title,
 }: {
   children: React.ReactNode
   onClick: () => void
   variant?: 'default' | 'warn' | 'danger'
+  title?: string
 }) {
   const cls = {
     default: 'bg-brand/10 text-brand-dark hover:bg-brand/20',
@@ -552,7 +606,11 @@ function ActionBtn({
     danger: 'bg-red-100 text-red-700 hover:bg-red-200',
   }[variant]
   return (
-    <button onClick={onClick} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${cls}`}>
+    <button
+      onClick={onClick}
+      title={title}
+      className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${cls}`}
+    >
       {children}
     </button>
   )

@@ -3,7 +3,7 @@
  * Usato SOLO server-side (API routes, server actions) — NON esporre al client.
  *
  * Permessi app necessari (Azure → App registration → API permissions):
- *   Sites.ReadWrite.All (Application)
+ *   Sites.ReadWrite.All (Application)  — liste + archiviazione ricevute su SharePoint
  *   Mail.Send (Application)
  *
  * Riusa il pattern dell'app di cooperativa (lib/graph.ts).
@@ -115,6 +115,31 @@ export async function graphPatchStatus(
 export async function graphPatch<T>(path: string, body: unknown): Promise<T> {
   const { body: out } = await graphPatchStatus(path, body)
   return out as T
+}
+
+/**
+ * Upload di contenuti binari (PUT). Usato per caricare il PDF della ricevuta
+ * nella libreria documenti SharePoint (`.../content`).
+ *
+ * Adatto a file fino a ~4 MB (limite dell'upload semplice di Graph): una
+ * ricevuta A4 di testo pesa poche decine di KB, quindi è più che sufficiente.
+ */
+export async function graphPutBinary<T>(
+  path: string,
+  data: Buffer | Uint8Array,
+  contentType = 'application/octet-stream'
+): Promise<T> {
+  const token = await getAppToken()
+  const res = await fetch(`${GRAPH_BASE}${path}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': contentType },
+    body: new Uint8Array(data),
+  })
+  if (!res.ok) {
+    throw new Error(`Graph PUT ${path} failed (${res.status}): ${await res.text()}`)
+  }
+  const text = await res.text()
+  return text ? JSON.parse(text) : ({} as T)
 }
 
 export async function graphDelete(path: string): Promise<void> {
