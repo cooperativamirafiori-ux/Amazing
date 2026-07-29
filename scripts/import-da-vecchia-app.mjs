@@ -13,8 +13,11 @@
  * Richiede in .env.local: GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET,
  *   SHAREPOINT_SITE_ID, SP_LIST_BENI, SP_LIST_PRENOTAZIONI
  *
- * Idempotente: salta le righe il cui IdLogico è già presente nelle liste
- * (così puoi rilanciarlo senza creare duplicati).
+ * BENI → sync completa (upsert per IdLogico): crea i nuovi, aggiorna quelli
+ * esistenti (prezzo, quantità, descrizione, immagine, importo libero) e
+ * DISATTIVA (Quantita=0 → nascosti dal catalogo) quelli non più presenti nel
+ * CSV. `Venduti` non viene toccato qui: è ricalcolato dalle prenotazioni.
+ * PRENOTAZIONI → idempotente: salta quelle il cui id è già presente.
  *
  * Mappatura per POSIZIONE di colonna (non per intestazione), quindi funziona
  * qualunque siano le etichette degli header:
@@ -134,6 +137,21 @@ async function listExistingIds(token, site, listId, campo) {
   return out
 }
 
+/** Mappa IdLogico -> id item SharePoint per i beni esistenti (per l'upsert). */
+async function listBeniByIdLogico(token, site, listId) {
+  const map = new Map()
+  let url = `/sites/${site}/lists/${listId}/items?$expand=fields($select=IdLogico)&$top=500`
+  while (url) {
+    const res = await graph(token, 'GET', url)
+    for (const it of res.value || []) {
+      const v = String(it.fields?.IdLogico ?? '').trim()
+      if (v) map.set(v, it.id)
+    }
+    url = res['@odata.nextLink'] ? res['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
+  }
+  return map
+}
+
 async function main() {
   loadEnvLocal()
   const [beniCsv, prenCsv] = process.argv.slice(2)
@@ -153,39 +171,58 @@ async function main() {
 
   const venduti = {} // goodId(logico) -> conteggio prenotazioni non annullate
 
-  // ---------- BENI ----------
+  // ---------- BENI (sync completa: upsert + disattivazione) ----------
   if (beniCsv) {
-    console.log(`\n→ Import beni da ${beniCsv}`)
+    console.log(`\n→ Sync beni da ${beniCsv}`)
     const rows = parseCSV(readFileSync(beniCsv, 'utf8')).slice(1) // salta header
-    const esistenti = await listExistingIds(token, site, LB, 'IdLogico')
+    const esistenti = await listBeniByIdLogico(token, site, LB) // IdLogico -> itemId
+    const nelCsv = new Set()
     const senzaFoto = []
-    let creati = 0, saltati = 0, errori = 0
+    let creati = 0, aggiornati = 0, errori = 0
     for (const r of rows) {
       const [id, name, description, price, quantity, image, flexibleAmount] = r
       if (!String(name ?? '').trim()) continue
       const idLog = String(id ?? '').trim() || String(Date.now())
-      if (esistenti.has(idLog)) { saltati++; continue }
+      nelCsv.add(idLog)
       // La colonna Immagine è testo (max 255): le immagini "data:" base64 non entrano.
       const img = String(image ?? '')
       const immagineValida = img && !img.startsWith('data:') && img.length <= 255
       if (img && !immagineValida) senzaFoto.push(name)
+      // Venduti NON viene toccato qui: è ricalcolato dopo dalle prenotazioni.
       const fields = {
         Title: name, Descrizione: description ?? '', Prezzo: num(price),
-        Quantita: num(quantity), Venduti: 0, Immagine: immagineValida ? img : '',
+        Quantita: num(quantity), Immagine: immagineValida ? img : '',
         ImportoLibero: bool(flexibleAmount), IdLogico: idLog,
       }
       try {
-        await graph(token, 'POST', `/sites/${site}/lists/${LB}/items`, { fields })
-        creati++
+        const itemId = esistenti.get(idLog)
+        if (itemId) {
+          await graph(token, 'PATCH', `/sites/${site}/lists/${LB}/items/${itemId}/fields`, fields)
+          aggiornati++
+        } else {
+          await graph(token, 'POST', `/sites/${site}/lists/${LB}/items`, { fields: { ...fields, Venduti: 0 } })
+          creati++
+        }
       } catch (e) {
         errori++
         console.log(`  ✗ bene "${name}" (IdLogico=${idLog}): ${e.message}`)
-        console.log(`    payload: ${JSON.stringify(fields)}`)
       }
     }
-    console.log(`  ✓ beni creati: ${creati}, saltati: ${saltati}, errori: ${errori}`)
+    // Disattiva i beni non più presenti nel vecchio DB (Quantita=0 → nascosti dal catalogo)
+    let disattivati = 0
+    for (const [idLog, itemId] of esistenti) {
+      if (nelCsv.has(idLog)) continue
+      try {
+        await graph(token, 'PATCH', `/sites/${site}/lists/${LB}/items/${itemId}/fields`, { Quantita: 0 })
+        disattivati++
+      } catch (e) {
+        errori++
+        console.log(`  ✗ disattivazione bene IdLogico=${idLog}: ${e.message}`)
+      }
+    }
+    console.log(`  ✓ beni creati: ${creati}, aggiornati: ${aggiornati}, disattivati: ${disattivati}, errori: ${errori}`)
     if (senzaFoto.length) {
-      console.log(`  ⚠ ${senzaFoto.length} bene/i importati SENZA foto (immagine base64 non supportata). Aggiungi un URL immagine dall'admin per:`)
+      console.log(`  ⚠ ${senzaFoto.length} bene/i senza foto (immagine base64 non supportata). Aggiungi un URL immagine dall'admin per:`)
       senzaFoto.forEach((n) => console.log(`      - ${n}`))
     }
   }

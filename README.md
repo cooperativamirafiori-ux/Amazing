@@ -99,9 +99,11 @@ scheda **Amministratori** in `/admin`, senza redeploy.
 - `scripts/provision-amazing.mjs` — crea/aggiorna le tre liste SharePoint e stampa i GUID.
   È idempotente e aggiunge solo le colonne mancanti: **rilancialo** dopo questo aggiornamento
   per creare `SatispayPaymentId`, `SatispayStatus`, `PaypalOrderId` sulla lista `Prenotazioni`.
-- `scripts/import-da-vecchia-app.mjs ./beni.csv ./prenotazioni.csv` — importa i dati dalla
-  vecchia app (CSV esportati dai fogli Google). Idempotente; le immagini `data:` base64 non
-  entrano (colonna testo, max 255) e vengono segnalate.
+- `scripts/import-da-vecchia-app.mjs ./beni.csv ./prenotazioni.csv` — importa/sincronizza i
+  dati dalla vecchia app (CSV esportati dai fogli Google). **Beni**: sync completa (upsert per
+  `IdLogico`: crea i nuovi, aggiorna gli esistenti, disattiva con `Quantita=0` quelli non più
+  nel CSV). **Prenotazioni**: idempotente (salta quelle già presenti), poi ricalcola `Venduti`.
+  Le immagini `data:` base64 non entrano (colonna testo, max 255) e vengono segnalate.
 - `scripts/dump-colonne.mjs` / `scripts/test-create-bene.mjs` — diagnostica delle liste.
 
 ## Variabili d'ambiente su Vercel
