@@ -253,11 +253,28 @@ function Prenotazioni() {
 
 const VUOTO = { name: '', description: '', price: '', quantity: '', image: '', flexibleAmount: false }
 
+type FormBene = typeof VUOTO
+
+function beneToForm(b: Bene): FormBene {
+  return {
+    name: b.name,
+    description: b.description,
+    price: String(b.price),
+    quantity: String(b.quantity),
+    image: b.image,
+    flexibleAmount: b.flexibleAmount,
+  }
+}
+
 function Catalogo() {
   const [rows, setRows] = useState<Bene[]>([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState<typeof VUOTO>(VUOTO)
+  const [form, setForm] = useState<FormBene>(VUOTO)
+  /** Bene in modifica: null = modalità "aggiungi". */
+  const [editing, setEditing] = useState<Bene | null>(null)
+  const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const [ok, setOk] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -271,44 +288,127 @@ function Catalogo() {
     load()
   }, [load])
 
-  async function aggiungi(e: React.FormEvent) {
+  function apriModifica(b: Bene) {
+    setEditing(b)
+    setForm(beneToForm(b))
+    setMsg('')
+    setOk('')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function annullaModifica() {
+    setEditing(null)
+    setForm(VUOTO)
+    setMsg('')
+    setOk('')
+  }
+
+  async function salva(e: React.FormEvent) {
     e.preventDefault()
     setMsg('')
-    const res = await fetch('/api/admin/beni', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: form.name,
-        description: form.description,
-        price: Number(form.price),
-        quantity: Number(form.quantity),
-        image: form.image,
-        flexibleAmount: form.flexibleAmount,
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok) setMsg(data.error || 'Errore')
-    else {
-      setForm(VUOTO)
-      await load()
+    setOk('')
+
+    const price = Number(form.price)
+    const quantity = Number(form.quantity)
+    if (!form.name.trim()) return setMsg('Il nome è obbligatorio.')
+    if (!Number.isFinite(price) || price < 0) return setMsg('Prezzo non valido.')
+    if (!Number.isInteger(quantity) || quantity < 0) return setMsg('Quantità non valida.')
+    // La quantità totale non può scendere sotto i pezzi già prenotati/venduti.
+    if (editing && quantity < editing.venduti)
+      return setMsg(
+        `Quantità troppo bassa: ci sono già ${editing.venduti} pezzi prenotati o venduti.`
+      )
+
+    const payload = {
+      name: form.name.trim(),
+      description: form.description,
+      price,
+      quantity,
+      image: form.image.trim(),
+      flexibleAmount: form.flexibleAmount,
     }
+
+    setSaving(true)
+    const res = await fetch(
+      editing ? `/api/admin/beni/${editing.spItemId}` : '/api/admin/beni',
+      {
+        method: editing ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    )
+    const data = await res.json().catch(() => ({}))
+    setSaving(false)
+
+    if (!res.ok) {
+      setMsg(data.error || 'Errore')
+      return
+    }
+    setOk(editing ? `"${payload.name}" aggiornato.` : `"${payload.name}" aggiunto al catalogo.`)
+    setEditing(null)
+    setForm(VUOTO)
+    await load()
   }
 
   async function elimina(b: Bene) {
     if (!confirm(`Eliminare "${b.name}" dal catalogo?`)) return
-    await fetch(`/api/admin/beni/${b.spItemId}`, { method: 'DELETE' })
+    const res = await fetch(`/api/admin/beni/${b.spItemId}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setMsg(data.error || 'Errore durante l’eliminazione')
+      return
+    }
+    if (editing?.spItemId === b.spItemId) annullaModifica()
     await load()
   }
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <form onSubmit={aggiungi} className="rounded-xl border border-brand/10 bg-white p-5">
-        <h3 className="font-display mb-3 text-lg font-bold text-brand-darker">Aggiungi bene</h3>
+      <form
+        onSubmit={salva}
+        className={`h-fit rounded-xl border bg-white p-5 ${
+          editing ? 'border-brand ring-2 ring-brand/20' : 'border-brand/10'
+        }`}
+      >
+        <h3 className="font-display mb-3 text-lg font-bold text-brand-darker">
+          {editing ? 'Modifica bene' : 'Aggiungi bene'}
+        </h3>
+        {editing && (
+          <p className="mb-3 rounded-lg bg-brand/10 px-3 py-2 text-xs text-brand-dark">
+            Stai modificando <strong>{editing.name}</strong> — venduti/prenotati:{' '}
+            {editing.venduti}
+          </p>
+        )}
         <Inp label="Nome" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-        <Inp label="Descrizione" value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
-        <Inp label="Prezzo / donazione minima (€)" value={form.price} onChange={(v) => setForm({ ...form, price: v })} />
-        <Inp label="Quantità" value={form.quantity} onChange={(v) => setForm({ ...form, quantity: v })} />
+        <Inp label="Descrizione" value={form.description} onChange={(v) => setForm({ ...form, description: v })} textarea />
+        <Inp
+          label="Prezzo / donazione minima (€)"
+          value={form.price}
+          onChange={(v) => setForm({ ...form, price: v })}
+          type="number"
+          step="0.01"
+          min="0"
+        />
+        <Inp
+          label="Quantità"
+          value={form.quantity}
+          onChange={(v) => setForm({ ...form, quantity: v })}
+          type="number"
+          step="1"
+          min={editing ? String(editing.venduti) : '0'}
+        />
         <Inp label="URL immagine" value={form.image} onChange={(v) => setForm({ ...form, image: v })} />
+        {form.image && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={form.image}
+            alt=""
+            className="mt-2 h-24 w-full rounded-lg object-cover"
+            onError={(e) => {
+              ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+            }}
+          />
+        )}
         <label className="mt-3 flex items-center gap-2 text-sm text-brand-darker/80">
           <input
             type="checkbox"
@@ -318,9 +418,24 @@ function Catalogo() {
           Importo libero (il donatore può dare di più)
         </label>
         {msg && <p className="mt-3 text-sm text-red-600">{msg}</p>}
-        <button className="mt-4 w-full rounded-full bg-brand px-5 py-2.5 font-bold text-white hover:bg-brand-dark">
-          Aggiungi
-        </button>
+        {ok && <p className="mt-3 text-sm text-emerald-700">{ok}</p>}
+        <div className="mt-4 flex gap-2">
+          <button
+            disabled={saving}
+            className="flex-1 rounded-full bg-brand px-5 py-2.5 font-bold text-white transition hover:bg-brand-dark disabled:opacity-50"
+          >
+            {saving ? 'Salvataggio…' : editing ? 'Salva modifiche' : 'Aggiungi'}
+          </button>
+          {editing && (
+            <button
+              type="button"
+              onClick={annullaModifica}
+              className="rounded-full bg-brand/10 px-5 py-2.5 font-bold text-brand-dark transition hover:bg-brand/20"
+            >
+              Annulla
+            </button>
+          )}
+        </div>
       </form>
 
       <div className="lg:col-span-2">
@@ -339,19 +454,32 @@ function Catalogo() {
               </thead>
               <tbody>
                 {rows.map((b) => (
-                  <tr key={b.spItemId} className="border-t border-brand/5">
+                  <tr
+                    key={b.spItemId}
+                    className={`border-t border-brand/5 ${
+                      editing?.spItemId === b.spItemId ? 'bg-brand/5' : ''
+                    }`}
+                  >
                     <td className="px-4 py-3">
-                      {b.name}
+                      <span className="font-semibold text-brand-darker">{b.name}</span>
                       {b.flexibleAmount && <span className="ml-2 text-xs text-brand/60">(libero)</span>}
+                      {b.description && (
+                        <span className="mt-0.5 block max-w-md truncate text-xs text-brand-darker/50">
+                          {b.description}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">€ {b.price.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right">
                       {b.available}/{b.quantity}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <ActionBtn variant="danger" onClick={() => elimina(b)}>
-                        Elimina
-                      </ActionBtn>
+                      <div className="flex justify-end gap-1.5">
+                        <ActionBtn onClick={() => apriModifica(b)}>Modifica</ActionBtn>
+                        <ActionBtn variant="danger" onClick={() => elimina(b)}>
+                          Elimina
+                        </ActionBtn>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -371,15 +499,40 @@ function Catalogo() {
   )
 }
 
-function Inp({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Inp({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  step,
+  min,
+  textarea = false,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  type?: string
+  step?: string
+  min?: string
+  textarea?: boolean
+}) {
+  const cls =
+    'w-full rounded-lg border border-brand/20 px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20'
   return (
     <label className="mt-3 block text-sm">
       <span className="mb-1 block font-semibold text-brand-darker">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-brand/20 px-3 py-2 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-      />
+      {textarea ? (
+        <textarea value={value} rows={3} onChange={(e) => onChange(e.target.value)} className={cls} />
+      ) : (
+        <input
+          value={value}
+          type={type}
+          step={step}
+          min={min}
+          onChange={(e) => onChange(e.target.value)}
+          className={cls}
+        />
+      )}
     </label>
   )
 }
