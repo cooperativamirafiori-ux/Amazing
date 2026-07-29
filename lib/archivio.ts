@@ -17,8 +17,9 @@
  * I default puntano già alla cartella giusta: **non serve configurare nulla**.
  * Le env servono solo per cambiare destinazione o per ottimizzare:
  *   SP_RICEVUTE_DRIVE_ID   id del drive (libreria): se presente si salta la
- *                          risoluzione del sito, risparmiando una chiamata
+ *                          risoluzione del sito, risparmiando due chiamate
  *                          Graph al primo utilizzo dopo ogni cold start
+ *                          (lo stampa scripts/setup-archivio-ricevute.mjs)
  *   SP_RICEVUTE_SITE       path o id del sito
  *   SP_RICEVUTE_LIBRERIA   nome Graph di un'ALTRA libreria del sito (di default
  *                          si usa la predefinita, senza cercarla per nome)
@@ -75,18 +76,28 @@ async function getDriveId(): Promise<string> {
 
   const site = process.env.SP_RICEVUTE_SITE || SITO_DEFAULT
 
+  // Prima si risolve l'ID del sito, poi si usa quello per il drive.
+  // NON si può concatenare `/sites/{host}:/sites/Segreteria` + `/drive`: in un
+  // path Graph con i due punti il percorso va chiuso da un secondo `:` prima di
+  // qualsiasi altro segmento, altrimenti Graph risponde 404 itemNotFound.
+  // Passando dall'ID il problema non esiste e la stessa logica funziona sia che
+  // SP_RICEVUTE_SITE contenga un path sia che contenga un ID già pronto.
+  const sito = await graphGet<{ id: string }>(`/sites/${site}`)
+
   // Senza SP_RICEVUTE_LIBRERIA si usa la libreria PREDEFINITA del sito, che è
   // quella che serve: la "Documenti" / "Documenti condivisi" / "Shared
   // Documents" del sito Segreteria. Evita di dipendere dal nome visualizzato,
   // che varia con la lingua del tenant e non coincide col segmento URL.
   const libreria = process.env.SP_RICEVUTE_LIBRERIA
   if (!libreria) {
-    const drive = await graphGet<{ id: string }>(`/sites/${site}/drive`)
+    const drive = await graphGet<{ id: string }>(`/sites/${sito.id}/drive`)
     _driveIdCache = drive.id
     return _driveIdCache
   }
 
-  const res = await graphGet<{ value: { id: string; name: string }[] }>(`/sites/${site}/drives`)
+  const res = await graphGet<{ value: { id: string; name: string }[] }>(
+    `/sites/${sito.id}/drives`
+  )
   const trovato = res.value.find((d) => d.name.toLowerCase() === libreria.toLowerCase())
   if (!trovato) {
     throw new Error(
