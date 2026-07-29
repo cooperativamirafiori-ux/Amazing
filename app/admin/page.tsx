@@ -12,23 +12,31 @@ export default async function AdminPage() {
   if (!session?.user?.email) redirect('/login')
   if (!session.user.isAdmin) redirect('/login')
 
+  const email = session.user.email
+
   return (
     <main className="min-h-screen bg-brand-bg">
       <header className="bg-gradient-to-br from-brand-dark to-brand text-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-          <div>
+        {/*
+          Su mobile i due blocchi si impilano (l'email è lunga e affiancata al
+          titolo lo schiacciava o sforava); da sm in su tornano affiancati.
+        */}
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6 sm:py-6">
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">{COOP.progetto}</p>
-            <h1 className="font-display text-2xl font-bold">Area amministrazione</h1>
+            <h1 className="font-display text-xl font-bold sm:text-2xl">Area amministrazione</h1>
           </div>
-          <div className="flex flex-col items-end gap-2 text-right text-sm">
+          <div className="flex min-w-0 items-center justify-between gap-3 text-sm sm:flex-col sm:items-end sm:gap-2 sm:text-right">
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-bold text-brand-dark shadow-sm transition hover:bg-white/90"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-bold text-brand-dark shadow-sm transition hover:bg-white/90"
             >
               <span aria-hidden>←</span> Torna al catalogo
             </Link>
-            <div>
-              <p className="text-white/85">{session.user.email}</p>
+            <div className="min-w-0">
+              <p className="truncate text-white/85" title={email ?? undefined}>
+                {email}
+              </p>
               <form
                 action={async () => {
                   'use server'
@@ -44,7 +52,7 @@ export default async function AdminPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-6 py-8">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <AdminDashboard />
       </div>
     </main>

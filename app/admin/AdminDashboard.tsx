@@ -214,8 +214,97 @@ function Prenotazioni() {
         </ActionBtn>
       </div>
       {msg && <p className="mb-4 rounded-lg bg-brand/10 px-4 py-3 text-sm text-brand-dark">{msg}</p>}
-      <div className="overflow-x-auto rounded-xl border border-brand/10 bg-white">
-        <table className="w-full text-sm">
+
+      {/*
+        MOBILE E TABLET (< lg) — una card per prenotazione. La tabella a 9
+        colonne su 390px si comprimeva a ~43px per colonna, rendendo il testo
+        illeggibile: `w-full` le impediva perfino di scorrere in orizzontale.
+        Il passaggio è a `lg` e non a `sm` perché questa tabella ha bisogno di
+        circa 960px: sotto quella soglia si tornerebbe a scorrere di lato.
+      */}
+      <div className="lg:hidden">
+        <label className="mb-3 flex items-center gap-2 text-sm">
+          <span className="font-semibold text-brand-darker">Ordina per</span>
+          <select
+            value={`${sortBy}:${sortDir}`}
+            onChange={(e) => {
+              const [k, d] = e.target.value.split(':')
+              setSortBy(k as SortKey)
+              setSortDir(d as SortDir)
+            }}
+            className="flex-1 rounded-lg border border-brand/20 bg-white px-3 py-2 outline-none focus:border-brand"
+          >
+            <option value="data:desc">Data — dalla più recente</option>
+            <option value="data:asc">Data — dalla più vecchia</option>
+            <option value="stato:asc">Stato pagamento</option>
+            <option value="consegna:asc">Stato consegna</option>
+          </select>
+        </label>
+
+        {/* Su tablet due colonne: a 900px una lista a colonna singola sarebbe spoglia. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {sortedRows.map((p) => (
+            <article
+              key={p.spItemId}
+              className="flex flex-col rounded-xl border border-brand/10 bg-white p-4 text-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-brand-darker">
+                    {p.nome} {p.cognome}
+                  </p>
+                  <p className="truncate text-xs text-brand-darker/60">{p.goodName}</p>
+                </div>
+                <p className="shrink-0 font-semibold text-brand">
+                  € {Number(p.importo).toFixed(2)}
+                </p>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <BadgeStato stato={p.stato} />
+                <ConsegnaControl p={p} onChange={setConsegna} />
+              </div>
+
+              <dl className="my-3 space-y-1 border-t border-brand/5 pt-3 text-xs">
+                <Campo label="Data">
+                  {p.data ? new Date(p.data).toLocaleDateString('it-IT') : '—'}
+                </Campo>
+                <Campo label="Metodo">{METODO_LABEL[p.metodo] || p.metodo || '—'}</Campo>
+                <Campo label="Ricevuta">
+                  <LinkRicevuta p={p} />
+                </Campo>
+                <Campo label="Email">
+                  <span className="truncate" title={p.email}>
+                    {p.email}
+                  </span>
+                </Campo>
+              </dl>
+
+              {/* mt-auto: le azioni restano in fondo anche con card di altezza diversa. */}
+              <div className="mt-auto grid grid-cols-2 gap-2 border-t border-brand/5 pt-3">
+                <AzioniPrenotazione
+                  p={p}
+                  busy={busy}
+                  onStato={setStato}
+                  onReinvia={reinvia}
+                  onArchivia={archivia}
+                  onElimina={elimina}
+                  piena
+                />
+              </div>
+            </article>
+          ))}
+          {!rows.length && (
+            <p className="rounded-xl border border-brand/10 bg-white px-4 py-8 text-center text-brand-darker/50">
+              Nessuna prenotazione.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* DA DESKTOP IN SU — la tabella completa. */}
+      <div className="hidden overflow-x-auto rounded-xl border border-brand/10 bg-white lg:block">
+        <table className="w-full min-w-[60rem] text-sm">
           <thead className="bg-brand-bg text-left text-brand-darker/70">
             <tr>
               <SortableTh label="Data" sortKey="data" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
@@ -247,26 +336,8 @@ function Prenotazioni() {
                 <td className="px-4 py-3 whitespace-nowrap text-brand-darker/70">
                   {p.data ? new Date(p.data).toLocaleDateString('it-IT') : '—'}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">
-                  {p.numeroRicevuta ? (
-                    p.pdfUrl ? (
-                      <a
-                        href={p.pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Apri il PDF archiviato su SharePoint"
-                        className="text-brand-dark underline hover:text-brand"
-                      >
-                        {p.numeroRicevuta}
-                      </a>
-                    ) : (
-                      <span title="Ricevuta emessa, copia su SharePoint non presente">
-                        {p.numeroRicevuta}
-                      </span>
-                    )
-                  ) : (
-                    '—'
-                  )}
+                <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">
+                  <LinkRicevuta p={p} />
                 </td>
                 <td className="px-4 py-3">
                   {p.nome} {p.cognome}
@@ -275,66 +346,21 @@ function Prenotazioni() {
                 <td className="px-4 py-3 text-right font-semibold">€ {Number(p.importo).toFixed(2)}</td>
                 <td className="px-4 py-3 text-brand-darker/70">{METODO_LABEL[p.metodo] || p.metodo || '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATO_COLOR[p.stato]}`}>
-                    {STATO_LABEL[p.stato]}
-                  </span>
+                  <BadgeStato stato={p.stato} />
                 </td>
                 <td className="px-4 py-3">
-                  {p.consegnato ? (
-                    <button
-                      onClick={() => setConsegna(p, false)}
-                      title="Annulla consegna"
-                      className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200"
-                    >
-                      Consegnato
-                    </button>
-                  ) : p.stato === 'paid' ? (
-                    <ActionBtn variant="danger" onClick={() => setConsegna(p, true)}>
-                      Da consegnare
-                    </ActionBtn>
-                  ) : (
-                    <span className="text-xs text-brand-darker/40">—</span>
-                  )}
+                  <ConsegnaControl p={p} onChange={setConsegna} />
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1.5">
-                    {p.stato === 'pending' && (
-                      <ActionBtn onClick={() => setStato(p, 'paid')}>Conferma pagamento</ActionBtn>
-                    )}
-                    {p.stato === 'paid' && (
-                      <ActionBtn
-                        onClick={() => reinvia(p)}
-                        title={`Rigenera la ricevuta e reinviala a ${p.email}`}
-                      >
-                        {busy === `${p.spItemId}:reinvia` ? 'Invio…' : 'Reinvia ricevuta'}
-                      </ActionBtn>
-                    )}
-                    {p.numeroRicevuta && (
-                      <ActionBtn
-                        onClick={() => archivia(p)}
-                        title={
-                          p.pdfUrl
-                            ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint (senza email)'
-                            : 'Salva la copia del PDF su SharePoint (senza email)'
-                        }
-                      >
-                        {busy === `${p.spItemId}:archivia`
-                          ? 'Archiviazione…'
-                          : p.pdfUrl
-                            ? 'Riarchivia'
-                            : 'Archivia PDF'}
-                      </ActionBtn>
-                    )}
-                    {p.stato !== 'annullato' && (
-                      <ActionBtn variant="warn" onClick={() => setStato(p, 'annullato')}>
-                        Annulla
-                      </ActionBtn>
-                    )}
-                    {p.stato === 'annullato' && (
-                      <ActionBtn variant="danger" onClick={() => elimina(p)}>
-                        Elimina
-                      </ActionBtn>
-                    )}
+                    <AzioniPrenotazione
+                      p={p}
+                      busy={busy}
+                      onStato={setStato}
+                      onReinvia={reinvia}
+                      onArchivia={archivia}
+                      onElimina={elimina}
+                    />
                   </div>
                 </td>
               </tr>
@@ -350,6 +376,148 @@ function Prenotazioni() {
         </table>
       </div>
     </div>
+  )
+}
+
+// ------------------------------------------------------------
+// Pezzi condivisi fra la vista a card (mobile) e la tabella (da sm in su):
+// così le due viste non possono divergere per distrazione.
+// ------------------------------------------------------------
+
+/** Riga etichetta/valore usata nelle card. */
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="shrink-0 text-brand-darker/50">{label}</dt>
+      <dd className="min-w-0 truncate text-right text-brand-darker">{children}</dd>
+    </div>
+  )
+}
+
+function BadgeStato({ stato }: { stato: StatoPagamento }) {
+  return (
+    <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${STATO_COLOR[stato]}`}>
+      {STATO_LABEL[stato]}
+    </span>
+  )
+}
+
+/** Numero ricevuta, come link al PDF su SharePoint se archiviato. */
+function LinkRicevuta({ p }: { p: Prenotazione }) {
+  if (!p.numeroRicevuta) return <>—</>
+  if (!p.pdfUrl) {
+    return (
+      <span title="Ricevuta emessa, copia su SharePoint non presente">{p.numeroRicevuta}</span>
+    )
+  }
+  return (
+    <a
+      href={p.pdfUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Apri il PDF archiviato su SharePoint"
+      className="text-brand-dark underline hover:text-brand"
+    >
+      {p.numeroRicevuta}
+    </a>
+  )
+}
+
+/** Stato consegna: cliccabile in entrambi i versi, indipendente dal pagamento. */
+function ConsegnaControl({
+  p,
+  onChange,
+}: {
+  p: Prenotazione
+  onChange: (p: Prenotazione, consegnato: boolean) => void
+}) {
+  if (p.consegnato) {
+    return (
+      <button
+        onClick={() => onChange(p, false)}
+        title="Annulla consegna"
+        className="whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200"
+      >
+        Consegnato
+      </button>
+    )
+  }
+  if (p.stato === 'paid') {
+    return (
+      <ActionBtn variant="danger" onClick={() => onChange(p, true)}>
+        Da consegnare
+      </ActionBtn>
+    )
+  }
+  return <span className="text-xs text-brand-darker/40">—</span>
+}
+
+/**
+ * Azioni disponibili su una prenotazione. Con `piena` i pulsanti si allargano
+ * per riempire la griglia della card: bersagli più comodi da toccare.
+ */
+function AzioniPrenotazione({
+  p,
+  busy,
+  onStato,
+  onReinvia,
+  onArchivia,
+  onElimina,
+  piena = false,
+}: {
+  p: Prenotazione
+  busy: string | null
+  onStato: (p: Prenotazione, stato: StatoPagamento) => void
+  onReinvia: (p: Prenotazione) => void
+  onArchivia: (p: Prenotazione) => void
+  onElimina: (p: Prenotazione) => void
+  piena?: boolean
+}) {
+  const w = piena ? 'w-full' : ''
+  return (
+    <>
+      {p.stato === 'pending' && (
+        <ActionBtn className={w} onClick={() => onStato(p, 'paid')}>
+          Conferma pagamento
+        </ActionBtn>
+      )}
+      {p.stato === 'paid' && (
+        <ActionBtn
+          className={w}
+          onClick={() => onReinvia(p)}
+          title={`Rigenera la ricevuta e reinviala a ${p.email}`}
+        >
+          {busy === `${p.spItemId}:reinvia` ? 'Invio…' : 'Reinvia ricevuta'}
+        </ActionBtn>
+      )}
+      {p.numeroRicevuta && (
+        <ActionBtn
+          className={w}
+          onClick={() => onArchivia(p)}
+          title={
+            p.pdfUrl
+              ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint (senza email)'
+              : 'Salva la copia del PDF su SharePoint (senza email)'
+          }
+        >
+          {busy === `${p.spItemId}:archivia`
+            ? 'Archiviazione…'
+            : p.pdfUrl
+              ? 'Riarchivia'
+              : 'Archivia PDF'}
+        </ActionBtn>
+      )}
+      {p.stato !== 'annullato' && (
+        <ActionBtn className={w} variant="warn" onClick={() => onStato(p, 'annullato')}>
+          Annulla
+        </ActionBtn>
+      )}
+      {p.stato === 'annullato' && (
+        <ActionBtn className={w} variant="danger" onClick={() => onElimina(p)}>
+          Elimina
+        </ActionBtn>
+      )}
+    </>
   )
 }
 
@@ -547,8 +715,50 @@ function Catalogo() {
       <div className="lg:col-span-2">
         {loading ? (
           <p className="text-brand-darker/60">Caricamento…</p>
+        ) : !rows.length ? (
+          <p className="rounded-xl border border-brand/10 bg-white px-4 py-8 text-center text-brand-darker/50">
+            Nessun bene nel catalogo.
+          </p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-brand/10 bg-white">
+          <>
+            {/* MOBILE (< sm) — una card per bene, senza scorrimento laterale. */}
+            <div className="space-y-3 sm:hidden">
+              {rows.map((b) => (
+                <article
+                  key={b.spItemId}
+                  className={`rounded-xl border bg-white p-4 text-sm ${
+                    editing?.spItemId === b.spItemId ? 'border-brand ring-2 ring-brand/20' : 'border-brand/10'
+                  }`}
+                >
+                  <p className="font-semibold text-brand-darker">
+                    {b.name}
+                    {b.flexibleAmount && (
+                      <span className="ml-2 text-xs font-normal text-brand/60">(libero)</span>
+                    )}
+                  </p>
+                  {b.description && (
+                    <p className="mt-0.5 text-xs text-brand-darker/50">{b.description}</p>
+                  )}
+                  <div className="mt-3 flex items-center justify-between border-t border-brand/5 pt-3 text-sm">
+                    <span className="font-semibold text-brand">€ {b.price.toFixed(2)}</span>
+                    <span className="text-brand-darker/70">
+                      Disponibili {b.available} di {b.quantity}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <ActionBtn className="w-full" onClick={() => apriModifica(b)}>
+                      Modifica
+                    </ActionBtn>
+                    <ActionBtn className="w-full" variant="danger" onClick={() => elimina(b)}>
+                      Elimina
+                    </ActionBtn>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* DA TABLET IN SU — la tabella. */}
+            <div className="hidden overflow-x-auto rounded-xl border border-brand/10 bg-white sm:block">
             {/*
               `table-fixed` + larghezze dichiarate: senza, i nomi lunghi e le
               descrizioni allargavano la tabella oltre il contenitore, il prezzo
@@ -605,16 +815,10 @@ function Catalogo() {
                     </td>
                   </tr>
                 ))}
-                {!rows.length && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-brand-darker/50">
-                      Nessun bene nel catalogo.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -664,11 +868,14 @@ function ActionBtn({
   onClick,
   variant = 'default',
   title,
+  className = '',
 }: {
   children: React.ReactNode
   onClick: () => void
   variant?: 'default' | 'warn' | 'danger'
   title?: string
+  /** Per allargare il pulsante nelle card mobile (`w-full`). */
+  className?: string
 }) {
   const cls = {
     default: 'bg-brand/10 text-brand-dark hover:bg-brand/20',
@@ -679,7 +886,8 @@ function ActionBtn({
     <button
       onClick={onClick}
       title={title}
-      className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition ${cls}`}
+      // py-2 invece di py-1.5: bersaglio un po' più comodo da toccare.
+      className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-bold transition ${cls} ${className}`}
     >
       {children}
     </button>
