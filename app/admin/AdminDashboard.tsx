@@ -180,8 +180,8 @@ function Prenotazioni() {
 
   /**
    * Chiede a PayPal/Satispay lo stato reale delle prenotazioni rimaste in
-   * sospeso e le chiude. Lo fa anche il cron ogni 15 minuti: questo pulsante
-   * serve per non aspettare (e come piano B se il cron non è attivo).
+   * sospeso e le chiude. Lo fa anche il cron notturno: questo pulsante serve
+   * quando bisogna liberare un pezzo subito, senza aspettare.
    */
   async function verificaPending() {
     setMsg('')
@@ -207,9 +207,9 @@ function Prenotazioni() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-brand-darker/60">
           Le prenotazioni PayPal/Satispay non pagate vengono verificate presso il provider e chiuse
-          automaticamente ogni 15 minuti.
+          automaticamente una volta al giorno. Premi il pulsante per liberare subito un bene.
         </p>
-        <ActionBtn onClick={verificaPending} title="Verifica subito, senza attendere il controllo automatico">
+        <ActionBtn onClick={verificaPending} title="Verifica subito, senza attendere il controllo notturno">
           {busy === 'verifica' ? 'Verifica in corso…' : 'Verifica pagamenti in sospeso'}
         </ActionBtn>
       </div>

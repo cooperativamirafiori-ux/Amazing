@@ -8,12 +8,23 @@
  * `lib/verifica-pagamento.ts` per il dettaglio della logica.
  *
  * ACCESSO — due strade:
- *  - Vercel Cron: invia `Authorization: Bearer <CRON_SECRET>`;
+ *  - Vercel Cron: invia `Authorization: Bearer <CRON_SECRET>`. Schedulato in
+ *    `vercel.json` **una volta al giorno** alle 05:00 UTC (07:00 in ora legale
+ *    italiana, 06:00 in ora solare): così il catalogo si libera prima
+ *    dell'inizio della giornata. Una volta al giorno è anche il massimo
+ *    consentito dal piano Vercel Hobby.
  *  - admin autenticato: pulsante "Verifica pagamenti in sospeso" in area admin.
- *    Serve anche come piano B se il piano Vercel non consente cron frequenti.
+ *    È la strada da usare quando serve liberare un pezzo subito, senza
+ *    aspettare il giro notturno.
  *
  * Se `CRON_SECRET` non è impostato l'accesso via bearer è disabilitato e resta
  * solo quello admin: meglio un endpoint inutilizzabile che uno aperto.
+ *
+ * Nota: la soglia dei 15 minuti (`PENDING_VERIFICA_MINUTI`) e la frequenza del
+ * cron sono cose diverse. La soglia dice *quali* prenotazioni sono abbastanza
+ * vecchie da poter essere verificate; il cron dice *quando* si guarda. Con un
+ * giro al giorno un pezzo abbandonato può restare bloccato fino a 24 ore, a
+ * meno che un operatore non prema il pulsante.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { guardAdmin } from '@/lib/api-guard'
