@@ -37,6 +37,27 @@ import { graphGet, graphPost, graphPutBinary } from '@/lib/graph'
 const SITO_DEFAULT = 'coopmirafiorionlus.sharepoint.com:/sites/Segreteria'
 const CARTELLA_DEFAULT = 'General/DONAZIONI/RICEVUTE PER DONAZIONI/{anno}/Inviate/AMZ'
 
+/**
+ * Legge una env ignorando i **segnaposto** non sostituiti.
+ *
+ * Succede davvero: copiando un comando d'esempio si finisce per impostare
+ * letteralmente `SP_RICEVUTE_DRIVE_ID=<drive-id>`, e quel valore arrivava fino
+ * a Graph, che rispondeva con un 400 criptico ("A potentially dangerous
+ * Request.Path value was detected from the client (<)"). Meglio trattarlo come
+ * non impostata e ricadere sui default, segnalandolo nei log.
+ */
+function envValida(nome: string): string | undefined {
+  const raw = process.env[nome]?.trim()
+  if (!raw) return undefined
+  if (/[<>]/.test(raw)) {
+    console.warn(
+      `[archivio] ${nome} contiene un segnaposto non sostituito ("${raw}"): la ignoro e uso i default.`
+    )
+    return undefined
+  }
+  return raw
+}
+
 /** Interruttore per disattivare l'archiviazione (es. in locale). */
 export function archivioAbilitato(): boolean {
   const off = String(process.env.SP_RICEVUTE_OFF ?? '').toLowerCase()
@@ -45,7 +66,7 @@ export function archivioAbilitato(): boolean {
 
 /** Percorso cartella per un dato anno, con {anno} risolto e slash normalizzati. */
 export function cartellaRicevute(anno: number): string {
-  const tpl = process.env.SP_RICEVUTE_CARTELLA || CARTELLA_DEFAULT
+  const tpl = envValida('SP_RICEVUTE_CARTELLA') || CARTELLA_DEFAULT
   return tpl.replace(/\{anno\}/g, String(anno)).replace(/^\/+|\/+$/g, '')
 }
 
@@ -68,13 +89,13 @@ let _driveIdCache: string | null = null
 async function getDriveId(): Promise<string> {
   if (_driveIdCache) return _driveIdCache
 
-  const diretto = process.env.SP_RICEVUTE_DRIVE_ID
+  const diretto = envValida('SP_RICEVUTE_DRIVE_ID')
   if (diretto) {
     _driveIdCache = diretto
     return diretto
   }
 
-  const site = process.env.SP_RICEVUTE_SITE || SITO_DEFAULT
+  const site = envValida('SP_RICEVUTE_SITE') || SITO_DEFAULT
 
   // Prima si risolve l'ID del sito, poi si usa quello per il drive.
   // NON si può concatenare `/sites/{host}:/sites/Segreteria` + `/drive`: in un
@@ -88,7 +109,7 @@ async function getDriveId(): Promise<string> {
   // quella che serve: la "Documenti" / "Documenti condivisi" / "Shared
   // Documents" del sito Segreteria. Evita di dipendere dal nome visualizzato,
   // che varia con la lingua del tenant e non coincide col segmento URL.
-  const libreria = process.env.SP_RICEVUTE_LIBRERIA
+  const libreria = envValida('SP_RICEVUTE_LIBRERIA')
   if (!libreria) {
     const drive = await graphGet<{ id: string }>(`/sites/${sito.id}/drive`)
     _driveIdCache = drive.id
@@ -125,8 +146,12 @@ async function assicuraCartella(driveId: string, path: string): Promise<void> {
     try {
       await graphGet(`/drives/${driveId}/root:/${encodePath(corrente)}`)
       continue // esiste già
-    } catch {
-      // non esiste: la creiamo sotto il parent
+    } catch (err: any) {
+      // Solo il 404 significa "non c'è, creala". Prima qualunque errore portava
+      // al tentativo di creazione: con un drive id sbagliato si finiva a fare
+      // POST /root/children su una destinazione arbitraria. Su 403, 400 o rete
+      // giù è più sicuro fermarsi e lasciar gestire l'avviso al chiamante.
+      if (!String(err?.message ?? '').includes('(404)')) throw err
     }
 
     const target = parent
