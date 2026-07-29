@@ -2,12 +2,18 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { Bene, Prenotazione } from '@/types'
+import type { Bene, Prenotazione, MetodoPagamento } from '@/types'
 
 const BONIFICO_IBAN = 'IT31A0200801125000101772702'
 const BONIFICO_BANCA = 'Banca Unicredit'
 
 const CF_REGEX = /^[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST]{1}[0-9LMNPQRSTUV]{2}[A-Z]{1}[0-9LMNPQRSTUV]{3}[A-Z]{1}$/i
+
+const METODI: { id: MetodoPagamento; icona: string; titolo: string; nota: string }[] = [
+  { id: 'paypal', icona: '💳', titolo: 'PayPal', nota: 'Pagamento online immediato' },
+  { id: 'satispay', icona: '📱', titolo: 'Satispay', nota: 'App mobile' },
+  { id: 'bonifico', icona: '🏦', titolo: 'Bonifico', nota: 'Verifica manuale' },
+]
 
 export default function CheckoutForm({ bene }: { bene: Bene }) {
   const [form, setForm] = useState({
@@ -18,6 +24,7 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     email: '',
     importo: bene.flexibleAmount ? '' : bene.price.toFixed(2),
   })
+  const [metodo, setMetodo] = useState<MetodoPagamento | null>(null)
   const [privacy, setPrivacy] = useState(false)
   const [errore, setErrore] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,34 +39,52 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     setErrore('')
 
     const importo = Number(form.importo.replace(',', '.'))
+    if (!metodo) return setErrore('Scegli un metodo di pagamento')
     if (!CF_REGEX.test(form.codiceFiscale.trim())) return setErrore('Codice fiscale non valido')
     if (!privacy) return setErrore("Devi accettare l'informativa privacy")
     if (bene.flexibleAmount && importo < bene.price) {
       return setErrore(`La donazione minima è € ${bene.price.toFixed(2)}`)
     }
 
+    const payload = {
+      goodId: bene.spItemId,
+      nome: form.nome.trim(),
+      cognome: form.cognome.trim(),
+      indirizzo: form.indirizzo.trim(),
+      codiceFiscale: form.codiceFiscale.trim().toUpperCase(),
+      email: form.email.trim(),
+      importo,
+      metodo,
+    }
+
     setLoading(true)
     try {
-      const res = await fetch('/api/prenotazioni', {
+      if (metodo === 'bonifico') {
+        const res = await fetch('/api/prenotazioni', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, metodo: 'bonifico' }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Errore nella prenotazione')
+        setOk(data.prenotazione)
+        return
+      }
+
+      // PayPal / Satispay: crea la prenotazione e rimanda al provider
+      const endpoint =
+        metodo === 'paypal' ? '/api/pagamenti/paypal/start' : '/api/pagamenti/satispay/start'
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          goodId: bene.spItemId,
-          nome: form.nome.trim(),
-          cognome: form.cognome.trim(),
-          indirizzo: form.indirizzo.trim(),
-          codiceFiscale: form.codiceFiscale.trim().toUpperCase(),
-          email: form.email.trim(),
-          importo,
-          metodo: 'bonifico',
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Errore nella prenotazione')
-      setOk(data.prenotazione)
+      if (!res.ok) throw new Error(data.error || 'Errore avvio pagamento')
+      if (!data.redirect_url) throw new Error('Redirect di pagamento non disponibile. Riprova.')
+      window.location.href = data.redirect_url
     } catch (err: any) {
       setErrore(err.message)
-    } finally {
       setLoading(false)
     }
   }
@@ -91,6 +116,15 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
       </div>
     )
   }
+
+  const ctaLabel =
+    metodo === 'paypal'
+      ? 'Paga con PayPal'
+      : metodo === 'satispay'
+      ? 'Paga con Satispay'
+      : metodo === 'bonifico'
+      ? 'Prosegui con il bonifico'
+      : 'Scegli un metodo di pagamento'
 
   return (
     <form onSubmit={submit} className="rounded-2xl border border-brand/10 bg-white p-8 shadow-sm">
@@ -132,7 +166,33 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
         />
       )}
 
-      <label className="mt-4 flex items-start gap-3 text-sm text-brand-darker/80">
+      <fieldset className="mt-6">
+        <legend className="mb-2 block text-sm font-semibold text-brand-darker">
+          Metodo di pagamento
+        </legend>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {METODI.map((m) => (
+            <button
+              type="button"
+              key={m.id}
+              onClick={() => setMetodo(m.id)}
+              className={`flex flex-col items-center gap-1 rounded-xl border p-4 text-center transition ${
+                metodo === m.id
+                  ? 'border-brand bg-brand/5 ring-2 ring-brand/30'
+                  : 'border-brand/20 hover:border-brand/40'
+              }`}
+            >
+              <span className="text-2xl" aria-hidden>
+                {m.icona}
+              </span>
+              <span className="text-sm font-bold text-brand-darker">{m.titolo}</span>
+              <span className="text-xs text-brand-darker/60">{m.nota}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <label className="mt-6 flex items-start gap-3 text-sm text-brand-darker/80">
         <input
           type="checkbox"
           checked={privacy}
@@ -151,10 +211,10 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || !metodo}
         className="mt-6 w-full rounded-full bg-brand px-6 py-3 font-bold text-white transition hover:bg-brand-dark disabled:opacity-60"
       >
-        {loading ? 'Invio in corso…' : 'Prosegui con il bonifico'}
+        {loading ? 'Attendi…' : ctaLabel}
       </button>
     </form>
   )

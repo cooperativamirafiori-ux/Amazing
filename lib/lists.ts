@@ -77,6 +77,9 @@ function mapPrenotazione(item: any): Prenotazione {
     metodo: String(f.Metodo ?? ''),
     stato: normalizeStatus(f.Stato),
     pdfUrl: String(f.PdfUrl ?? ''),
+    satispayPaymentId: String(f.SatispayPaymentId ?? ''),
+    satispayStatus: String(f.SatispayStatus ?? ''),
+    paypalOrderId: String(f.PaypalOrderId ?? ''),
   }
 }
 
@@ -179,7 +182,7 @@ async function adjustVenduti(spItemId: string, delta: number): Promise<Bene> {
 // ============================================================
 
 const PREN_SELECT =
-  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,PdfUrl)'
+  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,PdfUrl,SatispayPaymentId,SatispayStatus,PaypalOrderId)'
 
 export async function getPrenotazioni(): Promise<Prenotazione[]> {
   const res = await graphGet<{ value: any[] }>(
@@ -264,12 +267,48 @@ export async function prossimoNumeroRicevuta(): Promise<string> {
   return `RIC-${anno}-AMZ-${String(max + 1).padStart(4, '0')}`
 }
 
-/** Aggiorna stato e (opzionale) numero ricevuta / url pdf. */
+/** Aggiorna stato e (opzionale) numero ricevuta / url pdf / dati pagamento. */
 export async function aggiornaPrenotazione(
   spItemId: string,
-  fields: { Stato?: string; NumeroRicevuta?: string; PdfUrl?: string }
+  fields: {
+    Stato?: string
+    NumeroRicevuta?: string
+    PdfUrl?: string
+    SatispayPaymentId?: string
+    SatispayStatus?: string
+    PaypalOrderId?: string
+  }
 ): Promise<void> {
   await graphPatch(`${prenBase()}/${spItemId}/fields`, fields)
+}
+
+/** Trova una prenotazione dal suo Satispay payment id (per la callback S2S). */
+export async function getPrenotazioneBySatispayPaymentId(
+  paymentId: string
+): Promise<Prenotazione | null> {
+  if (!paymentId) return null
+  const res = await graphGet<{ value: any[] }>(
+    `${prenBase()}?${PREN_SELECT}&$top=1000`,
+    PREFER_NON_INDEXED
+  )
+  const found = res.value
+    .map(mapPrenotazione)
+    .find((p) => p.satispayPaymentId === String(paymentId))
+  return found ?? null
+}
+
+/**
+ * Rilascia il pezzo riservato da una prenotazione non pagata (Venduti-1) e la
+ * annulla. Usato quando Satispay/PayPal riportano il pagamento come annullato.
+ */
+export async function annullaERilascia(spItemId: string): Promise<void> {
+  const pren = await getPrenotazioneBySpId(spItemId)
+  if (!pren) return
+  if (pren.stato !== 'annullato') {
+    const bene = await getBeneByLogicalId(pren.goodId)
+    if (bene) await adjustVenduti(bene.spItemId, -1).catch(() => {})
+  }
+  await aggiornaPrenotazione(spItemId, { Stato: 'annullato' })
 }
 
 /**

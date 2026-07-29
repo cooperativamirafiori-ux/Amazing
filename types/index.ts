@@ -36,6 +36,12 @@ export interface Prenotazione {
   metodo: MetodoPagamento | string
   stato: StatoPagamento
   pdfUrl: string
+  /** ID pagamento Satispay (Business API) — valorizzato per metodo satispay */
+  satispayPaymentId: string
+  /** Ultimo stato Satispay noto: PENDING | ACCEPTED | CANCELED */
+  satispayStatus: string
+  /** ID ordine PayPal (Orders API v2) — valorizzato per metodo paypal */
+  paypalOrderId: string
 }
 
 /** Payload di creazione prenotazione dal checkout pubblico. */

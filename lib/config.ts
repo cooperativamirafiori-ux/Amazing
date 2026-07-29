@@ -23,11 +23,24 @@ export const BRAND = {
   lightGray: '#888888',
 }
 
-/** Metodi di pagamento supportati. In v1 è attivo solo il bonifico. */
+/** Metodi di pagamento supportati. */
 export const METODO_LABEL: Record<string, string> = {
   paypal: 'PayPal',
   satispay: 'Satispay',
   bonifico: 'Bonifico bancario',
+}
+
+/**
+ * URL base pubblico dell'app, usato per costruire redirect/callback di
+ * Satispay e PayPal. Da impostare in Production (APP_BASE_URL o NEXTAUTH_URL).
+ */
+export function appBaseUrl(): string {
+  const raw =
+    process.env.APP_BASE_URL ||
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+    'https://amazing-mirafiori.vercel.app'
+  return raw.replace(/\/$/, '')
 }
 
 export function adminEmails(): string[] {

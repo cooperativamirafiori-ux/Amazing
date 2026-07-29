@@ -10,3 +10,7 @@ next-env.d.ts
 .DS_Store
 .vercel
 .env*
+
+# dati importati (contengono dati personali)
+*.csv
+.env.vercel

@@ -60,6 +60,9 @@ const LISTE = [
       { name: 'Metodo', text: {} },
       { name: 'Stato', text: {} },
       { name: 'PdfUrl', text: {} },
+      { name: 'SatispayPaymentId', text: {} },
+      { name: 'SatispayStatus', text: {} },
+      { name: 'PaypalOrderId', text: {} },
     ],
   },
   {
