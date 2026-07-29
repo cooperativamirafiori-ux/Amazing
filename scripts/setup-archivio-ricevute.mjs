@@ -150,26 +150,33 @@ async function trovaDrive(token, siteId, nomeLibreria) {
   return { drive: perNome ?? null, tutti: drives }
 }
 
-/** Verifica quali segmenti del percorso esistono; se CREA, crea i mancanti. */
-async function verificaCartelle(token, driveId, path) {
+/**
+ * Verifica i segmenti del percorso; se CREA, crea i mancanti.
+ *
+ * `baseLen` è il numero di segmenti iniziali che **l'app a runtime non può
+ * creare** (tutto ciò che precede {anno}): qui lo script può crearli con --crea,
+ * ma li marca come "base" per rendere evidente la differenza.
+ */
+async function verificaCartelle(token, driveId, path, baseLen) {
   const segmenti = path.split('/').filter(Boolean)
   let corrente = ''
   const esito = []
 
-  for (const segmento of segmenti) {
+  for (const [i, segmento] of segmenti.entries()) {
     const parent = corrente
     corrente = corrente ? `${corrente}/${segmento}` : segmento
+    const base = i < baseLen
 
     try {
       await graph(token, 'GET', `/drives/${driveId}/root:/${enc(corrente)}`)
-      esito.push({ path: corrente, stato: 'ok' })
+      esito.push({ path: corrente, stato: 'ok', base })
       continue
     } catch (err) {
       if (err.status !== 404) throw err
     }
 
     if (!CREA) {
-      esito.push({ path: corrente, stato: 'manca' })
+      esito.push({ path: corrente, stato: 'manca', base })
       // Senza --crea non si può scendere oltre: i figli non esistono per forza.
       return { esito, completo: false }
     }
@@ -182,7 +189,7 @@ async function verificaCartelle(token, driveId, path) {
       folder: {},
       '@microsoft.graph.conflictBehavior': 'fail',
     })
-    esito.push({ path: corrente, stato: 'creata' })
+    esito.push({ path: corrente, stato: 'creata', base })
   }
   return { esito, completo: true }
 }
@@ -249,15 +256,34 @@ async function main() {
 
   // 3. Cartelle
   console.log(`\n→ Verifico il percorso${CREA ? ' (creo le cartelle mancanti)' : ''}…`)
-  const { esito, completo } = await verificaCartelle(token, drive.id, cartella)
+  const baseLen = CARTELLA_TEMPLATE.split('/')
+    .filter(Boolean)
+    .findIndex((s) => s.includes('{anno}'))
+  const { esito, completo } = await verificaCartelle(
+    token,
+    drive.id,
+    cartella,
+    baseLen < 0 ? 0 : baseLen,
+  )
   for (const e of esito) {
     const icona = e.stato === 'ok' ? '✓' : e.stato === 'creata' ? '+' : '✗'
-    console.log(`  ${icona} ${e.path}${e.stato === 'creata' ? '  (creata)' : ''}`)
+    const nota =
+      e.stato === 'creata'
+        ? '  (creata)'
+        : e.base
+          ? '  [base: a runtime l\'app NON la crea]'
+          : ''
+    console.log(`  ${icona} ${e.path}${nota}`)
   }
   if (!completo) {
     console.log('\n! Percorso incompleto. Rilancia con --crea per creare le cartelle mancanti,')
     console.log('  oppure creale a mano da SharePoint e rilancia questo script.')
   }
+  console.log(
+    `\n  A runtime l'app crea solo le cartelle dall'anno in giù. Le prime ${
+      baseLen < 0 ? 0 : baseLen
+    } (base)\n  devono esistere: se mancano, l'archiviazione si ferma e lo segnala.`,
+  )
 
   // 4. Upload di prova
   if (TEST && completo) {

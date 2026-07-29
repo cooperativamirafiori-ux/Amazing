@@ -64,10 +64,43 @@ export function archivioAbilitato(): boolean {
   return !(off === '1' || off === 'true')
 }
 
-/** Percorso cartella per un dato anno, con {anno} risolto e slash normalizzati. */
-export function cartellaRicevute(anno: number): string {
+/**
+ * Divide il percorso in due parti attorno a `{anno}`:
+ *
+ *   base   = General/DONAZIONI/RICEVUTE PER DONAZIONI   → deve già esistere
+ *   creabile = 2027/Inviate/AMZ                          → l'app può crearla
+ *
+ * L'app crea cartelle **solo dall'anno in giù**. Così il rinnovo di gennaio
+ * resta automatico, ma un percorso configurato male non può generare un albero
+ * di cartelle inventate nella libreria della Segreteria: se la base non c'è,
+ * l'archiviazione si ferma e lo segnala.
+ *
+ * Senza `{anno}` nel modello non c'è modo di distinguere le due parti: in quel
+ * caso si considera creabile solo l'ultimo segmento.
+ */
+export function dividiCartella(anno: number): { base: string; creabile: string } {
   const tpl = envValida('SP_RICEVUTE_CARTELLA') || CARTELLA_DEFAULT
-  return tpl.replace(/\{anno\}/g, String(anno)).replace(/^\/+|\/+$/g, '')
+  const pulisci = (s: string) => s.replace(/^\/+|\/+$/g, '')
+
+  const i = tpl.indexOf('{anno}')
+  if (i >= 0) {
+    return {
+      base: pulisci(tpl.slice(0, i)),
+      creabile: pulisci(tpl.slice(i)).replace(/\{anno\}/g, String(anno)),
+    }
+  }
+
+  const segmenti = pulisci(tpl).split('/').filter(Boolean)
+  return {
+    base: segmenti.slice(0, -1).join('/'),
+    creabile: segmenti.slice(-1).join('/'),
+  }
+}
+
+/** Percorso cartella completo per un dato anno. */
+export function cartellaRicevute(anno: number): string {
+  const { base, creabile } = dividiCartella(anno)
+  return [base, creabile].filter(Boolean).join('/')
 }
 
 /** Ogni segmento va percent-encoded separatamente: i nomi contengono spazi. */
@@ -131,28 +164,48 @@ async function getDriveId(): Promise<string> {
   return _driveIdCache
 }
 
-/**
- * Crea le cartelle mancanti del percorso, un livello alla volta.
- * Idempotente: il 409 (già esistente) viene ignorato.
- */
-async function assicuraCartella(driveId: string, path: string): Promise<void> {
-  const segmenti = path.split('/').filter(Boolean)
-  let corrente = ''
+function eNonTrovato(err: unknown): boolean {
+  return String((err as any)?.message ?? '').includes('(404)')
+}
 
-  for (const segmento of segmenti) {
+/** Vero se la cartella esiste. Rilancia su errori diversi dal 404. */
+async function cartellaEsiste(driveId: string, path: string): Promise<boolean> {
+  try {
+    await graphGet(`/drives/${driveId}/root:/${encodePath(path)}`)
+    return true
+  } catch (err) {
+    // Solo il 404 significa "non c'è". Su 403, 400 o rete giù è più sicuro
+    // fermarsi: con un drive id sbagliato si finiva a creare cartelle su una
+    // destinazione arbitraria.
+    if (!eNonTrovato(err)) throw err
+    return false
+  }
+}
+
+/**
+ * Crea le cartelle mancanti **solo sotto `base`**, un livello alla volta.
+ *
+ * `base` non viene mai creata: se manca, si interrompe con un messaggio chiaro.
+ * È la garanzia che un percorso configurato male non possa generare un albero di
+ * cartelle inventate nella libreria della Segreteria — al massimo l'archiviazione
+ * si ferma, e la ricevuta è comunque già partita via email.
+ *
+ * Idempotente: il 409 (creata in parallelo) viene ignorato.
+ */
+async function assicuraCartella(driveId: string, base: string, creabile: string): Promise<void> {
+  if (base && !(await cartellaEsiste(driveId, base))) {
+    throw new Error(
+      `La cartella di destinazione "${base}" non esiste nella libreria e l'app non è autorizzata a crearla. ` +
+        `Creala da SharePoint (o verifica SP_RICEVUTE_CARTELLA).`
+    )
+  }
+
+  let corrente = base
+  for (const segmento of creabile.split('/').filter(Boolean)) {
     const parent = corrente
     corrente = corrente ? `${corrente}/${segmento}` : segmento
 
-    try {
-      await graphGet(`/drives/${driveId}/root:/${encodePath(corrente)}`)
-      continue // esiste già
-    } catch (err: any) {
-      // Solo il 404 significa "non c'è, creala". Prima qualunque errore portava
-      // al tentativo di creazione: con un drive id sbagliato si finiva a fare
-      // POST /root/children su una destinazione arbitraria. Su 403, 400 o rete
-      // giù è più sicuro fermarsi e lasciar gestire l'avviso al chiamante.
-      if (!String(err?.message ?? '').includes('(404)')) throw err
-    }
+    if (await cartellaEsiste(driveId, corrente)) continue
 
     const target = parent
       ? `/drives/${driveId}/root:/${encodePath(parent)}:/children`
@@ -163,9 +216,9 @@ async function assicuraCartella(driveId: string, path: string): Promise<void> {
         folder: {},
         '@microsoft.graph.conflictBehavior': 'fail',
       })
-    } catch (err: any) {
-      // 409 = creata in parallelo da un'altra richiesta: va bene così.
-      if (!String(err?.message ?? '').includes('(409)')) throw err
+      console.log(`[archivio] creata cartella "${corrente}"`)
+    } catch (err) {
+      if (!String((err as any)?.message ?? '').includes('(409)')) throw err
     }
   }
 }
@@ -192,9 +245,10 @@ export async function archiviaRicevuta(opts: {
 }): Promise<RicevutaArchiviata> {
   const driveId = await getDriveId()
   const anno = opts.anno ?? new Date().getFullYear()
+  const { base, creabile } = dividiCartella(anno)
   const cartella = cartellaRicevute(anno)
 
-  await assicuraCartella(driveId, cartella)
+  await assicuraCartella(driveId, base, creabile)
 
   const suffisso = opts.nominativo ? `_${opts.nominativo.replace(/\s+/g, '_')}` : ''
   const nomeFile = nomeFileSicuro(`Ricevuta_${opts.numeroRicevuta}${suffisso}.pdf`)
