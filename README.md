@@ -105,6 +105,12 @@ scheda **Amministratori** in `/admin`, senza redeploy.
   `IdLogico`: crea i nuovi, aggiorna gli esistenti, disattiva con `Quantita=0` quelli non più
   nel CSV). **Prenotazioni**: idempotente (salta quelle già presenti), poi ricalcola `Venduti`.
   Le immagini `data:` base64 non entrano (colonna testo, max 255) e vengono segnalate.
+- `scripts/ripara-pdfurl.mjs` — ricollega le prenotazioni **importate** al PDF della ricevuta
+  già archiviato su SharePoint. L'import della vecchia app ha messo in `PdfUrl` il solo nome
+  del file (`RIC-2026-AMZ-0008.pdf`), che in admin diventava un link relativo → 404. Lo script
+  indicizza per anno la cartella `.../{anno}/Inviate/AMZ` e riscrive `PdfUrl` con l'indirizzo
+  vero. Anteprima di default, `--applica` per scrivere, `--svuota-mancanti` per azzerare i
+  `PdfUrl` senza PDF corrispondente. Non tocca nessun file: solo il campo della lista.
 - `scripts/dump-colonne.mjs` / `scripts/test-create-bene.mjs` — diagnostica delle liste.
 
 ## Variabili d'ambiente su Vercel

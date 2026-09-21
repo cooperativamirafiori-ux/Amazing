@@ -253,6 +253,7 @@ function Prenotazioni() {
                   <p className="truncate font-semibold text-brand-darker">
                     {p.nome} {p.cognome}
                   </p>
+                  <EmailRiga email={p.email} />
                   <p className="truncate text-xs text-brand-darker/60">{p.goodName}</p>
                 </div>
                 <p className="shrink-0 font-semibold text-brand">
@@ -272,11 +273,6 @@ function Prenotazioni() {
                 <Campo label="Metodo">{METODO_LABEL[p.metodo] || p.metodo || '—'}</Campo>
                 <Campo label="Ricevuta">
                   <LinkRicevuta p={p} />
-                </Campo>
-                <Campo label="Email">
-                  <span className="truncate" title={p.email}>
-                    {p.email}
-                  </span>
                 </Campo>
               </dl>
 
@@ -342,7 +338,10 @@ function Prenotazioni() {
                   <LinkRicevuta p={p} />
                 </td>
                 <td className="px-4 py-3">
-                  {p.nome} {p.cognome}
+                  <div>
+                    {p.nome} {p.cognome}
+                  </div>
+                  <EmailRiga email={p.email} />
                 </td>
                 <td className="px-4 py-3">{p.goodName}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-right font-semibold">
@@ -402,6 +401,38 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
+/**
+ * Email del donatore sotto il nominativo, in card e in tabella.
+ * Un click la copia: serve spesso per incollarla in una mail, e selezionarla a
+ * mano in una cella stretta e troncata era scomodo.
+ */
+function EmailRiga({ email }: { email: string }) {
+  const [copiata, setCopiata] = useState(false)
+
+  if (!email) return null
+
+  async function copia() {
+    try {
+      await navigator.clipboard.writeText(email)
+      setCopiata(true)
+      setTimeout(() => setCopiata(false), 1500)
+    } catch {
+      // Clipboard negata (http o permessi): resta la selezione manuale.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copia}
+      title={`${email} — clicca per copiare`}
+      className="block w-full max-w-full truncate text-left text-xs text-brand-darker/60 hover:text-brand hover:underline"
+    >
+      {copiata ? 'Copiata!' : email}
+    </button>
+  )
+}
+
 function BadgeStato({ stato }: { stato: StatoPagamento }) {
   return (
     <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${STATO_COLOR[stato]}`}>
@@ -410,12 +441,24 @@ function BadgeStato({ stato }: { stato: StatoPagamento }) {
   )
 }
 
+/**
+ * Vero solo se PdfUrl contiene un indirizzo vero.
+ *
+ * Le prenotazioni importate dalla vecchia app hanno in PdfUrl il solo NOME del
+ * file ("RIC-2026-AMZ-0008.pdf"): usato come href diventava un indirizzo
+ * relativo e apriva un 404. Per riempirli con l'indirizzo del PDF gia'
+ * presente su SharePoint c'e` `scripts/ripara-pdfurl.mjs`.
+ */
+function haPdfArchiviato(p: Prenotazione): boolean {
+  return /^https?:\/\//i.test(p.pdfUrl)
+}
+
 /** Numero ricevuta, come link al PDF su SharePoint se archiviato. */
 function LinkRicevuta({ p }: { p: Prenotazione }) {
   if (!p.numeroRicevuta) return <>—</>
-  if (!p.pdfUrl) {
+  if (!haPdfArchiviato(p)) {
     return (
-      <span title="Ricevuta emessa, copia su SharePoint non presente">{p.numeroRicevuta}</span>
+      <span title="Ricevuta emessa, copia su SharePoint non collegata">{p.numeroRicevuta}</span>
     )
   }
   return (
@@ -513,14 +556,14 @@ function AzioniPrenotazione({
           className={w}
           onClick={() => onArchivia(p)}
           title={
-            p.pdfUrl
+            haPdfArchiviato(p)
               ? 'Rigenera il PDF e sovrascrivi la copia su SharePoint (senza inviare email)'
               : 'Salva la copia del PDF su SharePoint (senza inviare email)'
           }
         >
           {busy === `${p.spItemId}:archivia`
             ? 'Archiviazione…'
-            : p.pdfUrl
+            : haPdfArchiviato(p)
               ? 'Riarchivia'
               : 'Archivia'}
         </ActionBtn>
