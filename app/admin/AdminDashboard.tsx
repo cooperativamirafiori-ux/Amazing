@@ -20,6 +20,21 @@ const STATO_COLOR: Record<StatoPagamento, string> = {
   paid: 'bg-emerald-100 text-emerald-800',
   annullato: 'bg-red-100 text-red-700',
 }
+/**
+ * Filtri della scheda Prenotazioni. "Da consegnare" e' quello che serve ogni
+ * giorno: sono le prenotazioni pagate il cui bene non e' ancora stato
+ * ritirato, cioe' le persone a cui scrivere per fissare il ritiro.
+ */
+type Filtro = 'tutte' | 'da-consegnare' | 'consegnate' | 'in-attesa' | 'annullate'
+
+const FILTRI: { key: Filtro; label: string; test: (p: Prenotazione) => boolean }[] = [
+  { key: 'tutte', label: 'Tutte', test: () => true },
+  { key: 'da-consegnare', label: 'Da consegnare', test: (p) => p.stato === 'paid' && !p.consegnato },
+  { key: 'consegnate', label: 'Consegnate', test: (p) => p.consegnato },
+  { key: 'in-attesa', label: 'In attesa di pagamento', test: (p) => p.stato === 'pending' },
+  { key: 'annullate', label: 'Annullate', test: (p) => p.stato === 'annullato' },
+]
+
 const METODO_LABEL: Record<string, string> = {
   paypal: 'PayPal',
   satispay: 'Satispay',
@@ -82,6 +97,9 @@ function Prenotazioni() {
   const [busy, setBusy] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortKey>('data')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [filtro, setFiltro] = useState<Filtro>('tutte')
+  const [cerca, setCerca] = useState('')
+  const [emailCopiate, setEmailCopiate] = useState(0)
 
   function toggleSort(key: SortKey) {
     if (sortBy === key) {
@@ -92,8 +110,24 @@ function Prenotazioni() {
     }
   }
 
+  /** Quante prenotazioni cadono in ogni filtro: mostrato sul pulsante. */
+  const conteggi = useMemo(() => {
+    const out = {} as Record<Filtro, number>
+    for (const f of FILTRI) out[f.key] = rows.filter(f.test).length
+    return out
+  }, [rows])
+
   const sortedRows = useMemo(() => {
-    const arr = [...rows]
+    const test = FILTRI.find((f) => f.key === filtro)?.test ?? (() => true)
+    const q = cerca.trim().toLowerCase()
+    const arr = rows.filter(
+      (p) =>
+        test(p) &&
+        (!q ||
+          `${p.nome} ${p.cognome} ${p.email} ${p.goodName} ${p.numeroRicevuta}`
+            .toLowerCase()
+            .includes(q))
+    )
     arr.sort((a, b) => {
       let cmp = 0
       if (sortBy === 'data') cmp = new Date(a.data || 0).getTime() - new Date(b.data || 0).getTime()
@@ -102,7 +136,24 @@ function Prenotazioni() {
       return sortDir === 'asc' ? cmp : -cmp
     })
     return arr
-  }, [rows, sortBy, sortDir])
+  }, [rows, sortBy, sortDir, filtro, cerca])
+
+  /**
+   * Email delle righe attualmente visibili, in un colpo solo: e' il modo
+   * rapido di scrivere a tutti quelli "da consegnare". Separate da `;` perche'
+   * e' quello che Outlook si aspetta nel campo destinatari.
+   */
+  async function copiaEmailVisibili() {
+    const lista = [...new Set(sortedRows.map((p) => p.email?.trim()).filter(Boolean))]
+    if (!lista.length) return
+    try {
+      await navigator.clipboard.writeText(lista.join('; '))
+      setEmailCopiate(lista.length)
+      setTimeout(() => setEmailCopiate(0), 2500)
+    } catch {
+      setMsg('Copia non riuscita: il browser ha negato l’accesso agli appunti.')
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -216,6 +267,39 @@ function Prenotazioni() {
       {msg && <p className="mb-4 rounded-lg bg-brand/10 px-4 py-3 text-sm text-brand-dark">{msg}</p>}
 
       {/*
+        Filtri + ricerca, condivisi dalla vista a card e dalla tabella: agiscono
+        su `sortedRows`, quindi anche "Copia le email" lavora esattamente su
+        cio' che si sta guardando.
+      */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {FILTRI.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFiltro(f.key)}
+            className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+              filtro === f.key
+                ? 'bg-brand text-white'
+                : 'bg-white text-brand-darker/70 hover:bg-brand/10'
+            }`}
+          >
+            {f.label} ({conteggi[f.key]})
+          </button>
+        ))}
+        <input
+          value={cerca}
+          onChange={(e) => setCerca(e.target.value)}
+          placeholder="Cerca nome, email, bene, ricevuta…"
+          className="min-w-[14rem] flex-1 rounded-lg border border-brand/20 bg-white px-3 py-1.5 text-sm outline-none focus:border-brand"
+        />
+        <ActionBtn
+          onClick={copiaEmailVisibili}
+          title="Copia negli appunti le email di tutte le prenotazioni mostrate, separate da ; (pronte per il campo A/Ccn di Outlook)"
+        >
+          {emailCopiate ? `${emailCopiate} email copiate!` : `Copia le email (${sortedRows.length})`}
+        </ActionBtn>
+      </div>
+
+      {/*
         MOBILE E TABLET (< lg) — una card per prenotazione. La tabella a 9
         colonne su 390px si comprimeva a ~43px per colonna, rendendo il testo
         illeggibile: `w-full` le impediva perfino di scorrere in orizzontale.
@@ -290,9 +374,9 @@ function Prenotazioni() {
               </div>
             </article>
           ))}
-          {!rows.length && (
+          {!sortedRows.length && (
             <p className="rounded-xl border border-brand/10 bg-white px-4 py-8 text-center text-brand-darker/50">
-              Nessuna prenotazione.
+              Nessuna prenotazione con questi criteri.
             </p>
           )}
         </div>
@@ -372,10 +456,10 @@ function Prenotazioni() {
                 </td>
               </tr>
             ))}
-            {!rows.length && (
+            {!sortedRows.length && (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-brand-darker/50">
-                  Nessuna prenotazione.
+                  Nessuna prenotazione con questi criteri.
                 </td>
               </tr>
             )}
