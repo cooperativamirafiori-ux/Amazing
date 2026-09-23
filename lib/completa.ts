@@ -23,6 +23,7 @@ import {
   aggiornaPrenotazione,
   prossimoNumeroRicevuta,
   marcaPagata,
+  getBeneByLogicalId,
 } from '@/lib/lists'
 import { renderRicevutaPdf, formatDataRicevuta } from '@/lib/ricevuta'
 import { inviaRicevutaEmail, inviaEmailRitiro } from '@/lib/email'
@@ -51,6 +52,22 @@ export function annoRicevuta(numeroRicevuta: string, data: string): number {
 export function dataRicevutaDa(pren: Prenotazione): string {
   const d = new Date(pren.data)
   return formatDataRicevuta(isNaN(d.getTime()) ? new Date() : d)
+}
+
+/**
+ * true se la prenotazione riguarda un bene fisico da ritirare. Le donazioni
+ * libere (bene con `flexibleAmount`, es. "Donazione Libera") non hanno ritiro.
+ * Se il bene non si trova (es. cancellato dal catalogo) si resta sul
+ * comportamento storico e l'email di ritiro parte.
+ */
+async function richiedeRitiro(pren: Prenotazione): Promise<boolean> {
+  try {
+    const bene = await getBeneByLogicalId(pren.goodId)
+    return !bene?.flexibleAmount
+  } catch (err) {
+    console.error('[completa] lettura bene per email ritiro fallita:', err)
+    return true
+  }
 }
 
 export interface EsitoCompletamento {
@@ -121,9 +138,13 @@ export async function inviaEArchivia(
   }
 
   // Email informativa sul ritiro: la meno critica delle tre, solo log.
-  await inviaEmailRitiro(prenDaStampare).catch((err) =>
-    console.error('[completa] invio email ritiro fallito:', err)
-  )
+  // Non si manda per le donazioni libere (bene a importo libero): non c'e'
+  // niente da ritirare, basta la ricevuta.
+  if (await richiedeRitiro(pren)) {
+    await inviaEmailRitiro(prenDaStampare).catch((err) =>
+      console.error('[completa] invio email ritiro fallito:', err)
+    )
+  }
 
   const { pdfUrl, avviso } = await archiviaSenzaBloccare(
     prenDaStampare,

@@ -45,6 +45,12 @@ export interface Prenotazione {
   satispayStatus: string
   /** ID ordine PayPal (Orders API v2) — valorizzato per metodo paypal */
   paypalOrderId: string
+  /**
+   * true se il bene e' a importo libero ("Donazione Libera"): niente da
+   * consegnare. Calcolato dall'API admin incrociando il catalogo, non salvato
+   * su SharePoint.
+   */
+  donazioneLibera?: boolean
 }
 
 /** Payload di creazione prenotazione dal checkout pubblico. */

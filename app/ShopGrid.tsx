@@ -48,7 +48,7 @@ export default function ShopGrid({ beni }: { beni: Bene[] }) {
                 href={`/checkout/${b.spItemId}`}
                 className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-dark"
               >
-                Prenota
+                {b.flexibleAmount ? 'Dona' : 'Prenota'}
               </Link>
             </div>
           </div>

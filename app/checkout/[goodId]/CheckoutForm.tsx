@@ -93,7 +93,9 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     const causale = `Donazione Progetto Amazing - ${bene.name} - ${ok.id}`
     return (
       <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm">
-        <h2 className="font-display text-2xl font-bold text-emerald-700">Prenotazione registrata!</h2>
+        <h2 className="font-display text-2xl font-bold text-emerald-700">
+          {bene.flexibleAmount ? 'Donazione registrata!' : 'Prenotazione registrata!'}
+        </h2>
         <p className="mt-2 text-brand-darker/80">
           Completa la donazione con un bonifico bancario. Dopo la verifica riceverai la ricevuta
           fiscale via email all'indirizzo <strong>{ok.email}</strong>.

@@ -29,7 +29,12 @@ type Filtro = 'tutte' | 'da-consegnare' | 'consegnate' | 'in-attesa' | 'annullat
 
 const FILTRI: { key: Filtro; label: string; test: (p: Prenotazione) => boolean }[] = [
   { key: 'tutte', label: 'Tutte', test: () => true },
-  { key: 'da-consegnare', label: 'Da consegnare', test: (p) => p.stato === 'paid' && !p.consegnato },
+  {
+    key: 'da-consegnare',
+    label: 'Da consegnare',
+    // Le donazioni libere non hanno un bene da ritirare.
+    test: (p) => p.stato === 'paid' && !p.consegnato && !p.donazioneLibera,
+  },
   { key: 'consegnate', label: 'Consegnate', test: (p) => p.consegnato },
   { key: 'in-attesa', label: 'In attesa di pagamento', test: (p) => p.stato === 'pending' },
   { key: 'annullate', label: 'Annullate', test: (p) => p.stato === 'annullato' },
@@ -566,6 +571,16 @@ function ConsegnaControl({
   p: Prenotazione
   onChange: (p: Prenotazione, consegnato: boolean) => void
 }) {
+  if (p.donazioneLibera) {
+    return (
+      <span
+        className="whitespace-nowrap text-xs text-brand-darker/50"
+        title="Donazione libera: nessun bene da consegnare"
+      >
+        Donazione
+      </span>
+    )
+  }
   if (p.consegnato) {
     return (
       <button

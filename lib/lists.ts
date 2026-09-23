@@ -480,7 +480,7 @@ export async function eliminaPrenotazione(spItemId: string): Promise<void> {
 }
 
 /** Trova un bene dal suo id logico (usato per aggiornare Venduti da una prenotazione). */
-async function getBeneByLogicalId(logicalId: string): Promise<Bene | null> {
+export async function getBeneByLogicalId(logicalId: string): Promise<Bene | null> {
   const beni = await getBeni()
   return beni.find((b) => b.id === logicalId) ?? null
 }
