@@ -15,7 +15,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@auth/core": "^0.37.2",
-    "@react-pdf/renderer": "^4.1.6"
+    "@react-pdf/renderer": "4.5.1"
   },
   "devDependencies": {
     "@types/node": "^22",
