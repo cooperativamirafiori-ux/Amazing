@@ -547,7 +547,16 @@ function LinkRicevuta({ p }: { p: Prenotazione }) {
   if (!p.numeroRicevuta) return <>—</>
   if (!haPdfArchiviato(p)) {
     return (
-      <span title="Ricevuta emessa, copia su SharePoint non collegata">{p.numeroRicevuta}</span>
+      <span
+        title={
+          p.stato === 'paid'
+            ? 'Ricevuta emessa, copia su SharePoint non collegata'
+            : 'Numero riservato (causale del bonifico): la ricevuta parte alla conferma del pagamento'
+        }
+        className={p.stato === 'paid' ? undefined : 'text-brand-darker/50'}
+      >
+        {p.numeroRicevuta}
+      </span>
     )
   }
   return (

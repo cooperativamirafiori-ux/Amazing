@@ -90,7 +90,11 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
   }
 
   if (ok) {
-    const causale = `Donazione Progetto Amazing - ${bene.name} - ${ok.id}`
+    // Il numero ricevuta (assegnato alla creazione) serve all'operatore per
+    // abbinare il bonifico alla prenotazione. Ripiego sull'id se mancasse.
+    const causale = ok.numeroRicevuta
+      ? `Donazione Progetto Amazing - ${ok.numeroRicevuta}`
+      : `Donazione Progetto Amazing - ${bene.name} - ${ok.id}`
     return (
       <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm">
         <h2 className="font-display text-2xl font-bold text-emerald-700">

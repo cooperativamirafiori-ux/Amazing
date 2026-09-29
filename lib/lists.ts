@@ -281,7 +281,18 @@ export async function creaPrenotazione(
       Stato: 'pending',
     }
     const created = await graphPost<any>(prenBase(), { fields })
-    const pren = (await getPrenotazioneBySpId(String(created.id)))!
+    const spItemId = String(created.id)
+    // Bonifico: il numero ricevuta si assegna SUBITO, così il donatore lo mette
+    // nella causale e l'operatore può abbinare il bonifico alla prenotazione.
+    // Alla conferma del pagamento `completaPagamento` riusa questo numero.
+    // Se l'assegnazione fallisce la prenotazione resta valida: il numero verrà
+    // assegnato alla conferma (e la causale usa l'id come ripiego).
+    if (p.metodo === 'bonifico') {
+      await assegnaNumeroRicevuta(spItemId).catch((err) =>
+        console.error('[creaPrenotazione] assegnazione numero ricevuta fallita:', err)
+      )
+    }
+    const pren = (await getPrenotazioneBySpId(spItemId))!
     return { prenotazione: pren }
   } catch (e: any) {
     // Rollback della riserva se la scrittura fallisce
@@ -300,6 +311,26 @@ export async function prossimoNumeroRicevuta(): Promise<string> {
     if (m) max = Math.max(max, parseInt(m[1], 10))
   }
   return `RIC-${anno}-AMZ-${String(max + 1).padStart(4, '0')}`
+}
+
+/**
+ * Assegna un numero ricevuta univoco a una prenotazione appena creata.
+ *
+ * Due bonifici creati nello stesso istante leggerebbero lo stesso "max" e
+ * prenderebbero lo stesso numero. Dopo la scrittura si ricontrolla: se un'altra
+ * prenotazione ha lo stesso numero e un id SharePoint più basso (è arrivata
+ * prima), cede lei il numero e si ritenta con il successivo.
+ */
+export async function assegnaNumeroRicevuta(spItemId: string): Promise<string> {
+  for (let tentativo = 0; tentativo < 5; tentativo++) {
+    const numero = await prossimoNumeroRicevuta()
+    await aggiornaPrenotazione(spItemId, { NumeroRicevuta: numero })
+    const doppioni = (await getPrenotazioni()).filter(
+      (x) => x.numeroRicevuta === numero && x.spItemId !== spItemId
+    )
+    if (!doppioni.some((x) => Number(x.spItemId) < Number(spItemId))) return numero
+  }
+  throw new Error('Impossibile assegnare un numero ricevuta univoco')
 }
 
 /**
