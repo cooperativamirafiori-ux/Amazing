@@ -551,7 +551,7 @@ function LinkRicevuta({ p }: { p: Prenotazione }) {
         title={
           p.stato === 'paid'
             ? 'Ricevuta emessa, copia su SharePoint non collegata'
-            : 'Numero riservato (causale del bonifico): la ricevuta parte alla conferma del pagamento'
+            : 'Numero riservato alla prenotazione: la ricevuta parte alla conferma del pagamento'
         }
         className={p.stato === 'paid' ? undefined : 'text-brand-darker/50'}
       >

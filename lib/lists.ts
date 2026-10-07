@@ -282,12 +282,14 @@ export async function creaPrenotazione(
     }
     const created = await graphPost<any>(prenBase(), { fields })
     const spItemId = String(created.id)
-    // Bonifico: il numero ricevuta si assegna SUBITO, così il donatore lo mette
-    // nella causale e l'operatore può abbinare il bonifico alla prenotazione.
+    // Bonifico e Satispay: il numero ricevuta si assegna SUBITO. Per il bonifico
+    // il donatore lo mette nella causale e l'operatore può abbinare il bonifico
+    // alla prenotazione; per Satispay diventa l'external_code del pagamento, così
+    // in app Satispay e nel portale Business compare RIC-… invece dell'id interno.
     // Alla conferma del pagamento `completaPagamento` riusa questo numero.
     // Se l'assegnazione fallisce la prenotazione resta valida: il numero verrà
     // assegnato alla conferma (e la causale usa l'id come ripiego).
-    if (p.metodo === 'bonifico') {
+    if (p.metodo === 'bonifico' || p.metodo === 'satispay') {
       await assegnaNumeroRicevuta(spItemId).catch((err) =>
         console.error('[creaPrenotazione] assegnazione numero ricevuta fallita:', err)
       )

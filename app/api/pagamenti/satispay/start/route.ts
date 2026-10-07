@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
     const base = appBaseUrl()
     const payment = await createSatispayPayment({
       importo: pren.importo,
-      externalCode: pren.id,
+      // Numero ricevuta assegnato alla creazione; ripiego sull'id se mancasse
+      externalCode: pren.numeroRicevuta || pren.id,
       // Satispay sostituisce {uuid} con l'id del pagamento nella callback S2S
       callbackUrl: `${base}/api/pagamenti/satispay/callback?payment_id={uuid}`,
       redirectUrl: `${base}/pagamento?satispay_booking=${encodeURIComponent(pren.spItemId)}`,
