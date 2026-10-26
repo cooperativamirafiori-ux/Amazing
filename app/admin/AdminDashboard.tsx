@@ -104,6 +104,8 @@ function Prenotazioni() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [filtro, setFiltro] = useState<Filtro>('tutte')
   const [cerca, setCerca] = useState('')
+  /** Origine: tutte, solo Amazing (AMZ) o solo pagina /dona (MIR). */
+  const [origine, setOrigine] = useState<'tutte' | 'AMZ' | 'MIR'>('tutte')
   const [emailCopiate, setEmailCopiate] = useState(0)
 
   function toggleSort(key: SortKey) {
@@ -128,6 +130,7 @@ function Prenotazioni() {
     const arr = rows.filter(
       (p) =>
         test(p) &&
+        (origine === 'tutte' || (p.serie ?? 'AMZ') === origine) &&
         (!q ||
           `${p.nome} ${p.cognome} ${p.email} ${p.goodName} ${p.numeroRicevuta}`
             .toLowerCase()
@@ -141,7 +144,7 @@ function Prenotazioni() {
       return sortDir === 'asc' ? cmp : -cmp
     })
     return arr
-  }, [rows, sortBy, sortDir, filtro, cerca])
+  }, [rows, sortBy, sortDir, filtro, cerca, origine])
 
   /**
    * Email delle righe attualmente visibili, in un colpo solo: e' il modo
@@ -290,6 +293,16 @@ function Prenotazioni() {
             {f.label} ({conteggi[f.key]})
           </button>
         ))}
+        <select
+          value={origine}
+          onChange={(e) => setOrigine(e.target.value as 'tutte' | 'AMZ' | 'MIR')}
+          title="Origine della donazione"
+          className="rounded-lg border border-brand/20 bg-white px-3 py-1.5 text-sm outline-none focus:border-brand"
+        >
+          <option value="tutte">Tutte le origini</option>
+          <option value="AMZ">Solo Amazing</option>
+          <option value="MIR">Solo Donazioni Cooperativa</option>
+        </select>
         <input
           value={cerca}
           onChange={(e) => setCerca(e.target.value)}
@@ -343,7 +356,10 @@ function Prenotazioni() {
                     {p.nome} {p.cognome}
                   </p>
                   <EmailRiga email={p.email} />
-                  <p className="truncate text-xs text-brand-darker/60">{p.goodName}</p>
+                  <p className="truncate text-xs text-brand-darker/60">
+                    {p.serie === 'MIR' && <BadgeSerie serie="MIR" prima />}
+                    {p.goodName}
+                  </p>
                 </div>
                 <p className="shrink-0 font-semibold text-brand">
                   € {Number(p.importo).toFixed(2)}
@@ -395,7 +411,7 @@ function Prenotazioni() {
               <SortableTh label="Data" sortKey="data" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
               <th className="px-4 py-3">Ricevuta</th>
               <th className="px-4 py-3">Nominativo</th>
-              <th className="px-4 py-3">Bene</th>
+              <th className="px-4 py-3">Bene / progetto</th>
               <th className="px-4 py-3 text-right">Importo</th>
               <th className="px-4 py-3">Metodo</th>
               <SortableTh
@@ -432,7 +448,10 @@ function Prenotazioni() {
                   </div>
                   <EmailRiga email={p.email} />
                 </td>
-                <td className="px-4 py-3">{p.goodName}</td>
+                <td className="px-4 py-3">
+                  {p.serie === 'MIR' && <BadgeSerie serie="MIR" prima />}
+                  {p.goodName}
+                </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right font-semibold">
                   € {Number(p.importo).toFixed(2)}
                 </td>
@@ -519,6 +538,21 @@ function EmailRiga({ email }: { email: string }) {
     >
       {copiata ? 'Copiata!' : email}
     </button>
+  )
+}
+
+/** Etichetta delle donazioni arrivate dalla pagina /dona (serie MIR). */
+function BadgeSerie({ serie, prima }: { serie: 'AMZ' | 'MIR'; prima?: boolean }) {
+  if (serie !== 'MIR') return null
+  return (
+    <span
+      title="Donazione dalla pagina Donazioni Cooperativa (/dona), ricevute MIR"
+      className={`${
+        prima ? 'mr-1.5' : 'ml-2'
+      } inline-block rounded-full bg-amber-100 px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-amber-800`}
+    >
+      Donazioni coop
+    </span>
   )
 }
 
@@ -704,7 +738,16 @@ function AzioniPrenotazione({
 // CATALOGO
 // ============================================================
 
-const VUOTO = { name: '', description: '', price: '', quantity: '', image: '', flexibleAmount: false }
+const VUOTO = {
+  name: '',
+  description: '',
+  price: '',
+  quantity: '',
+  image: '',
+  flexibleAmount: false,
+  /** AMZ = catalogo Amazing, MIR = progetto della pagina /dona. */
+  canale: 'AMZ' as 'AMZ' | 'MIR',
+}
 
 type FormBene = typeof VUOTO
 
@@ -716,6 +759,7 @@ function beneToForm(b: Bene): FormBene {
     quantity: String(b.quantity),
     image: b.image,
     flexibleAmount: b.flexibleAmount,
+    canale: b.canale ?? 'AMZ',
   }
 }
 
@@ -779,6 +823,7 @@ function Catalogo() {
       quantity,
       image: form.image.trim(),
       flexibleAmount: form.flexibleAmount,
+      canale: form.canale,
     }
 
     setSaving(true)
@@ -832,6 +877,38 @@ function Catalogo() {
             {editing.venduti}
           </p>
         )}
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block font-semibold text-brand-darker">Dove compare</span>
+          <select
+            value={form.canale}
+            onChange={(e) => {
+              const canale = e.target.value as 'AMZ' | 'MIR'
+              // Un progetto della pagina donazioni è sempre a importo libero e
+              // non si esaurisce: si precompilano i campi, restano modificabili.
+              setForm(
+                canale === 'MIR'
+                  ? {
+                      ...form,
+                      canale,
+                      flexibleAmount: true,
+                      quantity: form.quantity || '1000000',
+                      price: form.price || '1',
+                    }
+                  : { ...form, canale }
+              )
+            }}
+            className="w-full rounded-lg border border-brand/20 bg-white px-3 py-2 outline-none focus:border-brand"
+          >
+            <option value="AMZ">Catalogo Amazing</option>
+            <option value="MIR">Pagina Donazioni Cooperativa (/dona) — ricevute MIR</option>
+          </select>
+          {form.canale === 'MIR' && (
+            <span className="mt-1 block text-xs text-brand-darker/60">
+              Compare come pulsante su /dona. Il nome è il progetto a cui la persona sceglie di
+              donare.
+            </span>
+          )}
+        </label>
         <Inp label="Nome" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
         <Inp label="Descrizione" value={form.description} onChange={(v) => setForm({ ...form, description: v })} textarea />
         <Inp
@@ -914,6 +991,7 @@ function Catalogo() {
                     {b.flexibleAmount && (
                       <span className="ml-2 text-xs font-normal text-brand/60">(libero)</span>
                     )}
+                    {b.canale === 'MIR' && <BadgeSerie serie="MIR" />}
                   </p>
                   {b.description && (
                     <p className="mt-0.5 text-xs text-brand-darker/50">{b.description}</p>
@@ -968,6 +1046,7 @@ function Catalogo() {
                         {b.flexibleAmount && (
                           <span className="ml-2 text-xs font-normal text-brand/60">(libero)</span>
                         )}
+                        {b.canale === 'MIR' && <BadgeSerie serie="MIR" />}
                       </div>
                       {b.description && (
                         <div

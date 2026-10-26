@@ -5,7 +5,10 @@
  * ospita le liste dell'app, ma nello stesso tenant):
  *
  *   /sites/Segreteria / <libreria predefinita> / General / DONAZIONI /
- *     RICEVUTE PER DONAZIONI / <anno> / Inviate / AMZ
+ *     RICEVUTE PER DONAZIONI / <anno> / Inviate / <serie>
+ *
+ * dove <serie> è AMZ (Progetto Amazing) o MIR (pagina Donazioni Cooperativa
+ * Sociale Mirafiori), ricavata dal numero ricevuta. Vedi lib/serie.ts.
  *
  * La libreria è quella predefinita del sito: nell'URL è "Documenti condivisi",
  * ma Graph la espone come "Documenti". Per questo non la cerchiamo per nome.
@@ -33,9 +36,27 @@
  * Usato SOLO server-side (runtime nodejs).
  */
 import { graphGet, graphPost, graphPutBinary } from '@/lib/graph'
+import { serieDaNumero, SERIE_DEFAULT, type Serie } from '@/lib/serie'
 
 const SITO_DEFAULT = 'coopmirafiorionlus.sharepoint.com:/sites/Segreteria'
-const CARTELLA_DEFAULT = 'General/DONAZIONI/RICEVUTE PER DONAZIONI/{anno}/Inviate/AMZ'
+const CARTELLA_DEFAULT = 'General/DONAZIONI/RICEVUTE PER DONAZIONI/{anno}/Inviate/{serie}'
+
+/**
+ * Modello di cartella con la serie applicata.
+ *
+ * `SP_RICEVUTE_CARTELLA` impostata prima delle serie non contiene `{serie}` ma
+ * finisce con `/AMZ`: per non mandare le ricevute MIR nella cartella di Amazing,
+ * l'ultimo segmento AMZ viene sostituito dalla serie. Se non finisce con AMZ e
+ * la serie non è AMZ, la serie viene aggiunta in coda come sottocartella.
+ */
+function modelloCartella(serie: Serie): string {
+  const tpl = envValida('SP_RICEVUTE_CARTELLA') || CARTELLA_DEFAULT
+  if (tpl.includes('{serie}')) return tpl.replace(/\{serie\}/g, serie)
+  if (serie === 'AMZ') return tpl
+  const pulito = tpl.replace(/\/+$/, '')
+  if (/(^|\/)AMZ$/.test(pulito)) return pulito.replace(/AMZ$/, serie)
+  return `${pulito}/${serie}`
+}
 
 /**
  * Legge una env ignorando i **segnaposto** non sostituiti.
@@ -78,8 +99,11 @@ export function archivioAbilitato(): boolean {
  * Senza `{anno}` nel modello non c'è modo di distinguere le due parti: in quel
  * caso si considera creabile solo l'ultimo segmento.
  */
-export function dividiCartella(anno: number): { base: string; creabile: string } {
-  const tpl = envValida('SP_RICEVUTE_CARTELLA') || CARTELLA_DEFAULT
+export function dividiCartella(
+  anno: number,
+  serie: Serie = SERIE_DEFAULT
+): { base: string; creabile: string } {
+  const tpl = modelloCartella(serie)
   const pulisci = (s: string) => s.replace(/^\/+|\/+$/g, '')
 
   const i = tpl.indexOf('{anno}')
@@ -98,8 +122,8 @@ export function dividiCartella(anno: number): { base: string; creabile: string }
 }
 
 /** Percorso cartella completo per un dato anno. */
-export function cartellaRicevute(anno: number): string {
-  const { base, creabile } = dividiCartella(anno)
+export function cartellaRicevute(anno: number, serie: Serie = SERIE_DEFAULT): string {
+  const { base, creabile } = dividiCartella(anno, serie)
   return [base, creabile].filter(Boolean).join('/')
 }
 
@@ -245,8 +269,9 @@ export async function archiviaRicevuta(opts: {
 }): Promise<RicevutaArchiviata> {
   const driveId = await getDriveId()
   const anno = opts.anno ?? new Date().getFullYear()
-  const { base, creabile } = dividiCartella(anno)
-  const cartella = cartellaRicevute(anno)
+  const serie = serieDaNumero(opts.numeroRicevuta) ?? SERIE_DEFAULT
+  const { base, creabile } = dividiCartella(anno, serie)
+  const cartella = cartellaRicevute(anno, serie)
 
   await assicuraCartella(driveId, base, creabile)
 

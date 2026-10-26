@@ -15,6 +15,7 @@ import {
   renderToBuffer,
 } from '@react-pdf/renderer'
 import { COOP, METODO_LABEL, BRAND } from '@/lib/config'
+import { SERIE, serieDaNumero } from '@/lib/serie'
 import { FIRMA_RAPPRESENTANTE_PNG } from '@/lib/firma'
 import { importoInLettere } from '@/lib/importo-in-lettere'
 import type { Prenotazione } from '@/types'
@@ -77,7 +78,11 @@ function RicevutaDoc({
     <Document>
       <Page size="A4" style={s.page}>
         <Text style={s.coop}>{COOP.nome.toUpperCase()}</Text>
-        <Text style={s.sub}>{COOP.progetto}</Text>
+        {/* Amazing: "Progetto Amazing". Pagina /dona (MIR): solo il nome della
+            cooperativa, già sopra, quindi nessun sottotitolo. */}
+        {serieDaNumero(numeroRicevuta) !== 'MIR' && (
+          <Text style={s.sub}>{SERIE.AMZ.etichetta}</Text>
+        )}
         <View style={s.rule} />
 
         <Text style={s.titolo}>RICEVUTA PER EROGAZIONI LIBERALI</Text>
@@ -97,6 +102,9 @@ function RicevutaDoc({
         <Riga etichetta="Indirizzo:" valore={p.indirizzo} />
         <Riga etichetta="C.F. o P. IVA:" valore={p.codiceFiscale} />
         <Riga etichetta="Metodo di pagamento:" valore={metodo} />
+        {serieDaNumero(numeroRicevuta) === 'MIR' && p.goodName && (
+          <Riga etichetta="Destinazione:" valore={p.goodName} />
+        )}
 
         <View style={s.ruleLight} />
 

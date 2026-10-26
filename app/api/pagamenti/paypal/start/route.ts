@@ -3,6 +3,7 @@ import { creaPrenotazione, aggiornaPrenotazione, annullaERilascia } from '@/lib/
 import { createPaypalOrder } from '@/lib/paypal'
 import { validaPrenotazione } from '@/lib/valida-prenotazione'
 import { appBaseUrl } from '@/lib/config'
+import { SERIE } from '@/lib/serie'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     const base = appBaseUrl()
     const order = await createPaypalOrder({
       importo: pren.importo,
-      descrizione: `Donazione Progetto Amazing - ${pren.goodName}`,
+      descrizione: `${SERIE[res.serie].causale} - ${pren.goodName}`,
       bookingId: pren.spItemId,
       returnUrl: `${base}/pagamento?paypal_confirm=${encodeURIComponent(pren.spItemId)}`,
       cancelUrl: `${base}/pagamento?paypal_cancel=${encodeURIComponent(pren.spItemId)}`,

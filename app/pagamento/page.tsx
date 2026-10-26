@@ -9,6 +9,18 @@ export default function PagamentoRitornoPage() {
   const [stato, setStato] = useState<Stato>('verifica')
   const [messaggio, setMessaggio] = useState('Verifica del pagamento in corso…')
   const [numeroRicevuta, setNumeroRicevuta] = useState('')
+  // Dove tornare: catalogo Amazing o pagina /dona, scritto da CheckoutForm
+  // prima del redirect a PayPal/Satispay.
+  const [ritorno, setRitorno] = useState({ href: '/', label: 'Torna al catalogo' })
+
+  useEffect(() => {
+    try {
+      const r = JSON.parse(sessionStorage.getItem('amazing:ritorno') || 'null')
+      if (r?.href && r?.label) setRitorno({ href: String(r.href), label: String(r.label) })
+    } catch {
+      // storage non disponibile: resta il catalogo
+    }
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -21,7 +33,7 @@ export default function PagamentoRitornoPage() {
       try {
         if (ppCancel) {
           setStato('canceled')
-          setMessaggio('Pagamento PayPal annullato. Puoi tornare al catalogo e riprovare.')
+          setMessaggio('Pagamento PayPal annullato. Puoi tornare indietro e riprovare.')
           return
         }
 
@@ -69,7 +81,7 @@ export default function PagamentoRitornoPage() {
         setMessaggio('Pagamento confermato! La ricevuta fiscale è stata inviata via email.')
       } else if (data.status === 'canceled') {
         setStato('canceled')
-        setMessaggio('Pagamento annullato. Puoi tornare al catalogo e riprovare.')
+        setMessaggio('Pagamento annullato. Puoi tornare indietro e riprovare.')
       } else if (data.status === 'pending') {
         setStato('pending')
         setMessaggio(
@@ -118,10 +130,10 @@ export default function PagamentoRitornoPage() {
           </p>
         )}
         <Link
-          href="/"
+          href={ritorno.href}
           className="mt-6 inline-block rounded-full bg-brand px-6 py-2.5 text-sm font-bold text-white hover:bg-brand-dark"
         >
-          Torna al catalogo
+          {ritorno.label}
         </Link>
       </div>
     </main>

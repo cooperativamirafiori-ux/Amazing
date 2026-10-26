@@ -6,6 +6,7 @@
 import { graphPost } from '@/lib/graph'
 import { COOP, METODO_LABEL } from '@/lib/config'
 import { importoInLettere } from '@/lib/importo-in-lettere'
+import { SERIE, serieDaNumero, SERIE_DEFAULT } from '@/lib/serie'
 import type { Prenotazione } from '@/types'
 
 function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): string {
@@ -13,6 +14,7 @@ function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): st
   const importoLett = importoInLettere(Number(p.importo))
   const metodo = METODO_LABEL[p.metodo] || p.metodo || '—'
   const eur = Number(p.importo).toFixed(2)
+  const serie = SERIE[serieDaNumero(numeroRicevuta) ?? SERIE_DEFAULT]
 
   return `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f0f6fb;font-family:Arial,sans-serif;">
@@ -46,7 +48,7 @@ function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): st
   </tr>
   <tr><td colspan="2" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Indirizzo</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.indirizzo}</p></td></tr>
   <tr>
-    <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Bene prenotato</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.goodName}</p></td>
+    <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${serie.etichettaBene}</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.goodName}</p></td>
     <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Metodo pagamento</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${metodo}</p></td>
   </tr>
   </table>
@@ -79,7 +81,9 @@ export async function inviaRicevutaEmail(
 
   const bcc = process.env.MAIL_BCC
   const message: any = {
-    subject: `Ricevuta donazione ${numeroRicevuta} · ${COOP.progetto}`,
+    subject: `Ricevuta donazione ${numeroRicevuta} · ${
+      SERIE[serieDaNumero(numeroRicevuta) ?? SERIE_DEFAULT].etichetta
+    }`,
     body: { contentType: 'HTML', content: corpoHtml(p, numeroRicevuta, dataStr) },
     toRecipients: [{ emailAddress: { address: p.email } }],
     attachments: [

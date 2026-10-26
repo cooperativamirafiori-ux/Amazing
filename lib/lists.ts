@@ -9,7 +9,8 @@
  *
  * Nomi interni colonne attesi (vedi README per la creazione delle liste):
  *   Beni:         Title(name), Descrizione, Prezzo, Quantita, Venduti,
- *                 Immagine, ImportoLibero(yes/no), IdLogico
+ *                 Immagine, ImportoLibero(yes/no), IdLogico,
+ *                 Canale (testo: vuoto = Amazing, "MIR" = pagina /dona)
  *   Prenotazioni: Title(id logico), NumeroRicevuta, GoodId, GoodName, Nome,
  *                 Cognome, Indirizzo, CodiceFiscale, Email, Importo, Data,
  *                 Metodo, Stato, Consegnato(yes/no), PdfUrl
@@ -28,6 +29,7 @@ import {
   graphDelete,
 } from '@/lib/graph'
 import type { Bene, Prenotazione, NuovaPrenotazione, StatoPagamento } from '@/types'
+import { normalizzaSerie, serieDaNumero, SERIE_DEFAULT, type Serie } from '@/lib/serie'
 
 const SITE = () => process.env.SHAREPOINT_SITE_ID!
 const BENI = () => process.env.SP_LIST_BENI!
@@ -60,6 +62,7 @@ function mapBene(item: any): Bene {
     venduti,
     image: String(f.Immagine ?? ''),
     flexibleAmount: f.ImportoLibero === true || String(f.ImportoLibero).toLowerCase() === 'true',
+    canale: normalizzaSerie(f.Canale),
     available: Math.max(0, quantity - venduti),
   }
 }
@@ -118,7 +121,7 @@ function normalizeConsegnato(f: Record<string, unknown>): boolean {
 // ============================================================
 
 const BENE_SELECT =
-  '$expand=fields($select=Title,Descrizione,Prezzo,Quantita,Venduti,Immagine,ImportoLibero,IdLogico)'
+  '$expand=fields($select=Title,Descrizione,Prezzo,Quantita,Venduti,Immagine,ImportoLibero,IdLogico,Canale)'
 
 /**
  * Ordine di visualizzazione del catalogo:
@@ -141,9 +144,22 @@ export async function getBeni(): Promise<Bene[]> {
   return ordinaCatalogo(res.value.map(mapBene))
 }
 
-/** Catalogo pubblico: solo beni con disponibilità > 0. */
+/**
+ * Catalogo pubblico Amazing: solo beni con disponibilità > 0 e del canale
+ * Amazing. I progetti della pagina /dona (canale MIR) non compaiono qui.
+ */
 export async function getBeniDisponibili(): Promise<Bene[]> {
-  return (await getBeni()).filter((b) => b.available > 0)
+  return (await getBeni()).filter((b) => b.available > 0 && b.canale === 'AMZ')
+}
+
+/**
+ * Progetti/servizi della pagina /dona (canale MIR) ancora attivi, dal più
+ * vecchio al più nuovo: il primo creato ("Dove serve di più") resta in testa.
+ */
+export async function getProgettiDona(): Promise<Bene[]> {
+  return (await getBeni())
+    .filter((b) => b.canale === 'MIR' && b.available > 0)
+    .sort((a, b) => Number(a.spItemId) - Number(b.spItemId))
 }
 
 export async function getBeneBySpId(spItemId: string): Promise<Bene | null> {
@@ -165,6 +181,9 @@ export async function addBene(b: Partial<Bene>): Promise<Bene> {
     Immagine: b.image ?? '',
     ImportoLibero: !!b.flexibleAmount,
     IdLogico: Date.now().toString(),
+    // Vuoto = Amazing: così i beni creati prima della colonna e quelli nuovi
+    // del catalogo si comportano allo stesso modo.
+    Canale: b.canale === 'MIR' ? 'MIR' : '',
   }
   const created = await graphPost<any>(beniBase(), { fields })
   return (await getBeneBySpId(String(created.id)))!
@@ -178,6 +197,7 @@ export async function updateBene(spItemId: string, b: Partial<Bene>): Promise<vo
   if (b.quantity !== undefined) fields.Quantita = Number(b.quantity)
   if (b.image !== undefined) fields.Immagine = b.image
   if (b.flexibleAmount !== undefined) fields.ImportoLibero = !!b.flexibleAmount
+  if (b.canale !== undefined) fields.Canale = b.canale === 'MIR' ? 'MIR' : ''
   await graphPatch(`${beniBase()}/${spItemId}/fields`, fields)
 }
 
@@ -242,7 +262,7 @@ export async function getPrenotazioneBySpId(spItemId: string): Promise<Prenotazi
  */
 export async function creaPrenotazione(
   p: NuovaPrenotazione
-): Promise<{ prenotazione: Prenotazione } | { error: string }> {
+): Promise<{ prenotazione: Prenotazione; serie: Serie } | { error: string }> {
   const bene = await getBeneBySpId(p.goodId)
   if (!bene) return { error: 'Bene non trovato' }
 
@@ -290,12 +310,12 @@ export async function creaPrenotazione(
     // Se l'assegnazione fallisce la prenotazione resta valida: il numero verrà
     // assegnato alla conferma (e la causale usa l'id come ripiego).
     if (p.metodo === 'bonifico' || p.metodo === 'satispay') {
-      await assegnaNumeroRicevuta(spItemId).catch((err) =>
+      await assegnaNumeroRicevuta(spItemId, bene.canale).catch((err) =>
         console.error('[creaPrenotazione] assegnazione numero ricevuta fallita:', err)
       )
     }
     const pren = (await getPrenotazioneBySpId(spItemId))!
-    return { prenotazione: pren }
+    return { prenotazione: pren, serie: bene.canale }
   } catch (e: any) {
     // Rollback della riserva se la scrittura fallisce
     await adjustVenduti(p.goodId, -1).catch(() => {})
@@ -303,16 +323,32 @@ export async function creaPrenotazione(
   }
 }
 
-/** Numero ricevuta progressivo: RIC-<anno>-AMZ-<0000>. */
-export async function prossimoNumeroRicevuta(): Promise<string> {
+/**
+ * Numero ricevuta progressivo della serie indicata: RIC-<anno>-<serie>-<0000>.
+ * Ogni serie (AMZ, MIR) ha il suo contatore indipendente.
+ */
+export async function prossimoNumeroRicevuta(serie: Serie = SERIE_DEFAULT): Promise<string> {
   const anno = new Date().getFullYear()
   const prens = await getPrenotazioni()
+  const re = new RegExp(`-${serie}-(\\d+)`)
   let max = 0
   for (const p of prens) {
-    const m = p.numeroRicevuta.match(/AMZ-(\d+)/)
+    const m = p.numeroRicevuta.match(re)
     if (m) max = Math.max(max, parseInt(m[1], 10))
   }
-  return `RIC-${anno}-AMZ-${String(max + 1).padStart(4, '0')}`
+  return `RIC-${anno}-${serie}-${String(max + 1).padStart(4, '0')}`
+}
+
+/**
+ * Serie a cui appartiene una prenotazione: dal numero ricevuta se già
+ * assegnato, altrimenti dal canale del bene. Se il bene non si trova più
+ * (cancellato dal catalogo) si resta su Amazing, il comportamento storico.
+ */
+export async function serieDiPrenotazione(p: Prenotazione): Promise<Serie> {
+  const daNumero = serieDaNumero(p.numeroRicevuta)
+  if (daNumero) return daNumero
+  const bene = await getBeneByLogicalId(p.goodId).catch(() => null)
+  return bene?.canale ?? SERIE_DEFAULT
 }
 
 /**
@@ -323,9 +359,12 @@ export async function prossimoNumeroRicevuta(): Promise<string> {
  * prenotazione ha lo stesso numero e un id SharePoint più basso (è arrivata
  * prima), cede lei il numero e si ritenta con il successivo.
  */
-export async function assegnaNumeroRicevuta(spItemId: string): Promise<string> {
+export async function assegnaNumeroRicevuta(
+  spItemId: string,
+  serie: Serie = SERIE_DEFAULT
+): Promise<string> {
   for (let tentativo = 0; tentativo < 5; tentativo++) {
-    const numero = await prossimoNumeroRicevuta()
+    const numero = await prossimoNumeroRicevuta(serie)
     await aggiornaPrenotazione(spItemId, { NumeroRicevuta: numero })
     const doppioni = (await getPrenotazioni()).filter(
       (x) => x.numeroRicevuta === numero && x.spItemId !== spItemId

@@ -24,6 +24,7 @@ import {
   prossimoNumeroRicevuta,
   marcaPagata,
   getBeneByLogicalId,
+  serieDiPrenotazione,
 } from '@/lib/lists'
 import { renderRicevutaPdf, formatDataRicevuta } from '@/lib/ricevuta'
 import { inviaRicevutaEmail, inviaEmailRitiro } from '@/lib/email'
@@ -173,7 +174,8 @@ export async function completaPagamento(
     return { numeroRicevuta: pren.numeroRicevuta, giaPagata: true }
   }
 
-  const candidato = pren.numeroRicevuta || (await prossimoNumeroRicevuta())
+  const candidato =
+    pren.numeroRicevuta || (await prossimoNumeroRicevuta(await serieDiPrenotazione(pren)))
 
   // Da qui in poi lo stato è scritto: qualunque errore successivo NON deve
   // rimettere in dubbio un pagamento già incassato.

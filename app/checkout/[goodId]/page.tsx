@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { getBeneBySpId } from '@/lib/lists'
 import { COOP } from '@/lib/config'
 import CheckoutForm from './CheckoutForm'
@@ -13,6 +14,9 @@ export default async function CheckoutPage({
 }) {
   const { goodId } = await params
   const bene = await getBeneBySpId(goodId)
+
+  // I progetti della pagina donazioni hanno la loro intestazione: /dona.
+  if (bene?.canale === 'MIR') redirect(`/dona?progetto=${encodeURIComponent(bene.spItemId)}`)
 
   return (
     <main className="min-h-screen">

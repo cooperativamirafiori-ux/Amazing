@@ -31,6 +31,7 @@ export async function PATCH(
     if (body.description !== undefined) patch.description = String(body.description)
     if (body.image !== undefined) patch.image = String(body.image).trim()
     if (body.flexibleAmount !== undefined) patch.flexibleAmount = !!body.flexibleAmount
+    if (body.canale !== undefined) patch.canale = body.canale === 'MIR' ? 'MIR' : 'AMZ'
 
     if (body.price !== undefined) {
       const price = Number(body.price)

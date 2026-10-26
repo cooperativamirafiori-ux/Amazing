@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { Bene, Prenotazione, MetodoPagamento } from '@/types'
+import { SERIE } from '@/lib/serie'
 
 const BONIFICO_IBAN = 'IT31A0200801125000101772702'
 const BONIFICO_BANCA = 'Banca Unicredit'
@@ -15,7 +16,15 @@ const METODI: { id: MetodoPagamento; icona: string; titolo: string; nota: string
   { id: 'bonifico', icona: '🏦', titolo: 'Bonifico', nota: 'Verifica manuale' },
 ]
 
+/**
+ * Chiave sessionStorage letta dalla pagina /pagamento per sapere dove
+ * riportare il donatore (catalogo Amazing o pagina /dona).
+ */
+export const RITORNO_KEY = 'amazing:ritorno'
+
 export default function CheckoutForm({ bene }: { bene: Bene }) {
+  // Amazing o pagina /dona: cambia causale e link di ritorno, non il flusso.
+  const serie = SERIE[bene.canale ?? 'AMZ']
   const [form, setForm] = useState({
     nome: '',
     cognome: '',
@@ -82,6 +91,14 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Errore avvio pagamento')
       if (!data.redirect_url) throw new Error('Redirect di pagamento non disponibile. Riprova.')
+      try {
+        sessionStorage.setItem(
+          RITORNO_KEY,
+          JSON.stringify({ href: serie.ritorno, label: serie.ritornoLabel })
+        )
+      } catch {
+        // storage non disponibile: la pagina di ritorno usa il catalogo
+      }
       window.location.href = data.redirect_url
     } catch (err: any) {
       setErrore(err.message)
@@ -93,8 +110,8 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     // Il numero ricevuta (assegnato alla creazione) serve all'operatore per
     // abbinare il bonifico alla prenotazione. Ripiego sull'id se mancasse.
     const causale = ok.numeroRicevuta
-      ? `Donazione Progetto Amazing - ${ok.numeroRicevuta}`
-      : `Donazione Progetto Amazing - ${bene.name} - ${ok.id}`
+      ? `${serie.causale} - ${ok.numeroRicevuta}`
+      : `${serie.causale} - ${bene.name} - ${ok.id}`
     return (
       <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm">
         <h2 className="font-display text-2xl font-bold text-emerald-700">
@@ -114,10 +131,10 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
         </dl>
 
         <Link
-          href="/"
+          href={serie.ritorno}
           className="mt-6 inline-block rounded-full bg-brand px-6 py-2.5 text-sm font-bold text-white hover:bg-brand-dark"
         >
-          Torna al catalogo
+          {serie.ritornoLabel}
         </Link>
       </div>
     )

@@ -16,6 +16,7 @@ import {
   getPrenotazioneBySpId,
   aggiornaPrenotazione,
   prossimoNumeroRicevuta,
+  serieDiPrenotazione,
 } from '@/lib/lists'
 import { inviaEArchivia, annoRicevuta, dataRicevutaDa } from '@/lib/completa'
 
@@ -43,7 +44,7 @@ export async function POST(
     // fix del 2026-07-29). Se ne assegna uno adesso.
     let numeroRicevuta = pren.numeroRicevuta
     if (!numeroRicevuta) {
-      numeroRicevuta = await prossimoNumeroRicevuta()
+      numeroRicevuta = await prossimoNumeroRicevuta(await serieDiPrenotazione(pren))
       await aggiornaPrenotazione(spItemId, { NumeroRicevuta: numeroRicevuta })
     }
 

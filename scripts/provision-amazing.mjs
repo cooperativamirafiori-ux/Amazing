@@ -41,6 +41,8 @@ const LISTE = [
       { name: 'Immagine', text: {} },
       { name: 'ImportoLibero', boolean: {} },
       { name: 'IdLogico', text: {} },
+      // Vuoto = catalogo Amazing, "MIR" = progetto della pagina /dona
+      { name: 'Canale', text: {} },
     ],
   },
   {

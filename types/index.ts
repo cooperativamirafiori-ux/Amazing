@@ -1,4 +1,5 @@
 /** Tipi condivisi dell'app Amazing. */
+import type { Serie } from '@/lib/serie'
 
 export interface Bene {
   /** ID item SharePoint (stringa) */
@@ -12,6 +13,11 @@ export interface Bene {
   venduti: number
   image: string
   flexibleAmount: boolean
+  /**
+   * Canale/serie ricevute (colonna SharePoint `Canale`): AMZ = catalogo Amazing,
+   * MIR = progetto della pagina /dona. Vedi lib/serie.ts.
+   */
+  canale: Serie
   /** Disponibilità residua = quantity - venduti (mai < 0) */
   available: number
 }
@@ -51,6 +57,11 @@ export interface Prenotazione {
    * su SharePoint.
    */
   donazioneLibera?: boolean
+  /**
+   * Serie della donazione (AMZ / MIR). Calcolata dall'API admin dal numero
+   * ricevuta o, se manca, dal canale del bene. Non salvata su SharePoint.
+   */
+  serie?: Serie
 }
 
 /** Payload di creazione prenotazione dal checkout pubblico. */
