@@ -5,8 +5,9 @@
  *
  *  1. aggiunge alla lista Beni la colonna di testo "Canale"
  *     (vuota = catalogo Amazing, "MIR" = progetto della pagina /dona);
- *  2. crea il primo progetto "Dove serve di più" (canale MIR, importo libero),
- *     copiando la donazione minima dalla "Donazione Libera" di Amazing.
+ *  2. crea i progetti MIR elencati in PROGETTI che ancora mancano (canale MIR,
+ *     importo libero), copiando la donazione minima dalla "Donazione Libera" di
+ *     Amazing. I pulsanti su /dona seguono l'ordine di creazione.
  *
  * Gli altri progetti si aggiungono poi dall'admin → Catalogo, scegliendo
  * "Dove compare: Pagina Donazioni Cooperativa".
@@ -26,10 +27,15 @@ import { dirname, join } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const PRIMO_PROGETTO = {
-  Title: 'Dove serve di più',
-  Descrizione: 'La destiniamo noi alle attività che in questo momento ne hanno più bisogno.',
-}
+/** Progetti della pagina /dona, nell'ordine in cui compaiono i pulsanti. */
+const PROGETTI = [
+  {
+    Title: 'Dove serve di più',
+    Descrizione: 'La destiniamo noi alle attività che in questo momento ne hanno più bisogno.',
+  },
+  { Title: 'Casa Artemisia', Descrizione: '' },
+  { Title: 'CPG Torino', Descrizione: '' },
+]
 
 function loadEnvLocal() {
   try {
@@ -94,24 +100,28 @@ async function main() {
     console.log('✓ Colonna "Canale" aggiunta alla lista Beni.')
   }
 
-  // 2. Primo progetto MIR
+  // 2. Progetti MIR mancanti (confronto per nome, senza maiuscole/spazi)
   const items = await graph(
     token,
     'GET',
     `/sites/${site}/lists/${list}/items?$expand=fields($select=Title,Prezzo,ImportoLibero,Canale)&$top=500`
   )
   const beni = items.value || []
-  const mir = beni.filter((i) => String(i.fields?.Canale ?? '').toUpperCase() === 'MIR')
-  if (mir.length) {
-    console.log(`✓ Progetti MIR già presenti: ${mir.map((i) => i.fields.Title).join(', ')}`)
-  } else {
-    const libera = beni.find(
-      (i) => i.fields?.ImportoLibero === true && String(i.fields?.Canale ?? '').toUpperCase() !== 'MIR'
-    )
-    const minimo = Number(libera?.fields?.Prezzo ?? 1) || 1
+  const isMir = (i) => String(i.fields?.Canale ?? '').toUpperCase() === 'MIR'
+  const chiave = (t) => String(t ?? '').trim().toLowerCase()
+  const esistenti = new Set(beni.filter(isMir).map((i) => chiave(i.fields?.Title)))
+
+  const libera = beni.find((i) => i.fields?.ImportoLibero === true && !isMir(i))
+  const minimo = Number(libera?.fields?.Prezzo ?? 1) || 1
+
+  for (const progetto of PROGETTI) {
+    if (esistenti.has(chiave(progetto.Title))) {
+      console.log(`✓ Progetto "${progetto.Title}" già presente.`)
+      continue
+    }
     await graph(token, 'POST', `/sites/${site}/lists/${list}/items`, {
       fields: {
-        ...PRIMO_PROGETTO,
+        ...progetto,
         Prezzo: minimo,
         Quantita: 1000000,
         Venduti: 0,
@@ -121,7 +131,9 @@ async function main() {
         Canale: 'MIR',
       },
     })
-    console.log(`✓ Creato il progetto "${PRIMO_PROGETTO.Title}" (donazione minima € ${minimo.toFixed(2)}).`)
+    console.log(`✓ Creato il progetto "${progetto.Title}" (donazione minima € ${minimo.toFixed(2)}).`)
+    // IdLogico è un timestamp: evita due progetti con lo stesso id.
+    await new Promise((r) => setTimeout(r, 5))
   }
 
   console.log('\nFatto. Ora puoi fare git push: la pagina sarà su /dona.')
