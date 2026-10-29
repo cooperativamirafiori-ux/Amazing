@@ -18,6 +18,7 @@ import { COOP, METODO_LABEL, BRAND } from '@/lib/config'
 import { SERIE, serieDaNumero } from '@/lib/serie'
 import { FIRMA_RAPPRESENTANTE_PNG } from '@/lib/firma'
 import { importoInLettere } from '@/lib/importo-in-lettere'
+import { isPersonaGiuridica } from '@/lib/donatore'
 import type { Prenotazione } from '@/types'
 
 const s = StyleSheet.create({
@@ -98,8 +99,8 @@ function RicevutaDoc({
         <Text style={s.importoLett}>({importoLett})</Text>
 
         <Text style={s.daLabel}>Da:</Text>
-        <Riga etichetta="Nominativo:" valore={nomeCompleto} />
-        <Riga etichetta="Indirizzo:" valore={p.indirizzo} />
+        <Riga etichetta={isPersonaGiuridica(p) ? 'Ragione sociale:' : 'Nominativo:'} valore={nomeCompleto} />
+        <Riga etichetta={isPersonaGiuridica(p) ? 'Sede legale:' : 'Indirizzo:'} valore={p.indirizzo} />
         <Riga etichetta="C.F. o P. IVA:" valore={p.codiceFiscale} />
         <Riga etichetta="Metodo di pagamento:" valore={metodo} />
         {serieDaNumero(numeroRicevuta) === 'MIR' && p.goodName && (

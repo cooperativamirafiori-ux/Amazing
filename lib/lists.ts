@@ -265,6 +265,10 @@ export async function creaPrenotazione(
 ): Promise<{ prenotazione: Prenotazione; serie: Serie } | { error: string }> {
   const bene = await getBeneBySpId(p.goodId)
   if (!bene) return { error: 'Bene non trovato' }
+  // Enti e aziende possono donare solo dalla pagina /dona (serie MIR).
+  if (p.tipoDonatore === 'giuridica' && bene.canale !== 'MIR') {
+    return { error: 'Le donazioni di enti e aziende sono possibili solo dalla pagina Donazioni' }
+  }
 
   const importo = Number(p.importo)
   if (!importo || importo <= 0) return { error: 'Importo non valido' }
@@ -291,7 +295,7 @@ export async function creaPrenotazione(
       GoodId: bene.id,
       GoodName: bene.name,
       Nome: p.nome,
-      Cognome: p.cognome,
+      Cognome: p.tipoDonatore === 'giuridica' ? '' : p.cognome,
       Indirizzo: p.indirizzo,
       CodiceFiscale: p.codiceFiscale.toUpperCase(),
       Email: p.email,

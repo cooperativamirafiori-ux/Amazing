@@ -7,6 +7,7 @@ import { graphPost } from '@/lib/graph'
 import { COOP, METODO_LABEL } from '@/lib/config'
 import { importoInLettere } from '@/lib/importo-in-lettere'
 import { SERIE, serieDaNumero, SERIE_DEFAULT } from '@/lib/serie'
+import { isPersonaGiuridica } from '@/lib/donatore'
 import type { Prenotazione } from '@/types'
 
 function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): string {
@@ -15,6 +16,7 @@ function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): st
   const metodo = METODO_LABEL[p.metodo] || p.metodo || '—'
   const eur = Number(p.importo).toFixed(2)
   const serie = SERIE[serieDaNumero(numeroRicevuta) ?? SERIE_DEFAULT]
+  const ente = isPersonaGiuridica(p)
 
   return `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f0f6fb;font-family:Arial,sans-serif;">
@@ -38,15 +40,15 @@ function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): st
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fbfe;border-radius:10px;padding:18px;margin:0 0 24px;border:1px solid #d6e9f7;">
   <tr>
     <td width="50%" style="padding:6px 12px;vertical-align:top;">
-      <p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Nominativo</p>
+      <p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${ente ? 'Ragione sociale' : 'Nominativo'}</p>
       <p style="margin:3px 0 0;color:#1a3a52;font-size:14px;font-weight:700;">${nomeCompleto}</p>
     </td>
     <td width="50%" style="padding:6px 12px;vertical-align:top;">
-      <p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Codice Fiscale</p>
+      <p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${ente ? 'C.F. / Partita IVA' : 'Codice Fiscale'}</p>
       <p style="margin:3px 0 0;color:#1a3a52;font-size:14px;font-weight:700;">${p.codiceFiscale}</p>
     </td>
   </tr>
-  <tr><td colspan="2" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Indirizzo</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.indirizzo}</p></td></tr>
+  <tr><td colspan="2" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${ente ? 'Sede legale' : 'Indirizzo'}</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.indirizzo}</p></td></tr>
   <tr>
     <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${serie.etichettaBene}</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.goodName}</p></td>
     <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Metodo pagamento</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${metodo}</p></td>
@@ -56,11 +58,12 @@ function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): st
   <tr><td style="padding:16px 20px;">
     <p style="margin:0 0 7px;color:#444;font-size:11px;line-height:1.8;">La ${COOP.nome} è ente non commerciale iscritta nel RUNTS di cui all'art. 45 del D.Lgs. 117/2017 in data 21/03/2022.</p>
     <p style="margin:0 0 7px;color:#444;font-size:11px;line-height:1.8;">Per le persone fisiche, l'erogazione liberale è detraibile al 30% fino a &euro; 30.000 (art. 83 co. 1 D.Lgs. 117/2017) o deducibile nel limite del 10% del reddito complessivo (art. 83 co. 2).</p>
+    <p style="margin:0 0 7px;color:#444;font-size:11px;line-height:1.8;">Per gli enti e le aziende, l'erogazione liberale è deducibile nel limite del 10% del reddito complessivo dichiarato (art. 83 co. 2 D.Lgs. 117/2017).</p>
     <p style="margin:0 0 7px;color:#444;font-size:11px;line-height:1.8;">Si rammenta che è condizione di deducibilità l'erogazione tramite banca, posta o sistema tracciabile.</p>
     <p style="margin:0;color:#444;font-size:11px;font-weight:700;">La presente ricevuta è esente da imposta di bollo ex art. 82 co. 5 del D.Lgs. n. 117/2017.</p>
   </td></tr></table>
   <div style="background:#f0fff4;border:1.5px solid #a8e6c0;border-radius:10px;padding:14px 18px;">
-    <p style="margin:0;color:#276749;font-size:13px;font-weight:700;">In allegato trovi la ricevuta in formato PDF da conservare per la detrazione fiscale.</p>
+    <p style="margin:0;color:#276749;font-size:13px;font-weight:700;">In allegato trovi la ricevuta in formato PDF da conservare ${ente ? 'ai fini della deduzione fiscale' : 'per la detrazione fiscale'}.</p>
   </div>
 </td></tr>
 <tr><td style="background:linear-gradient(135deg,#1a5a8a,#2C7BB8);padding:20px 40px;text-align:center;">

@@ -74,4 +74,9 @@ export interface NuovaPrenotazione {
   email: string
   importo: number
   metodo: MetodoPagamento
+  /**
+   * Solo pagina /dona: 'giuridica' = ente/azienda (nome = ragione sociale,
+   * cognome vuoto, codice = P.IVA o C.F. ente). Vedi lib/donatore.ts.
+   */
+  tipoDonatore?: 'fisica' | 'giuridica'
 }

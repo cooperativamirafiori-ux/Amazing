@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import type { Bene, Prenotazione, StatoPagamento } from '@/types'
+import { isPersonaGiuridica } from '@/lib/donatore'
 
 type Tab = 'catalogo' | 'prenotazioni' | 'admin'
 
@@ -354,6 +355,7 @@ function Prenotazioni() {
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-brand-darker">
                     {p.nome} {p.cognome}
+                    {isPersonaGiuridica(p) && <BadgeEnte />}
                   </p>
                   <EmailRiga email={p.email} />
                   <p className="truncate text-xs text-brand-darker/60">
@@ -445,6 +447,7 @@ function Prenotazioni() {
                 <td className="px-4 py-3">
                   <div>
                     {p.nome} {p.cognome}
+                    {isPersonaGiuridica(p) && <BadgeEnte />}
                   </div>
                   <EmailRiga email={p.email} />
                 </td>
@@ -542,6 +545,18 @@ function EmailRiga({ email }: { email: string }) {
 }
 
 /** Etichetta delle donazioni arrivate dalla pagina /dona (serie MIR). */
+/** Donatore persona giuridica (ente/azienda): cognome vuoto, vedi lib/donatore.ts. */
+function BadgeEnte() {
+  return (
+    <span
+      title="Donazione di un ente o di un'azienda (persona giuridica)"
+      className="ml-2 inline-block rounded-full bg-slate-100 px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-slate-700"
+    >
+      Ente
+    </span>
+  )
+}
+
 function BadgeSerie({ serie, prima }: { serie: 'AMZ' | 'MIR'; prima?: boolean }) {
   if (serie !== 'MIR') return null
   return (

@@ -4,11 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import type { Bene, Prenotazione, MetodoPagamento } from '@/types'
 import { SERIE } from '@/lib/serie'
+import { codiceValido, normalizzaCodice, type TipoDonatore } from '@/lib/donatore'
 
 const BONIFICO_IBAN = 'IT31A0200801125000101772702'
 const BONIFICO_BANCA = 'Banca Unicredit'
-
-const CF_REGEX = /^[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST]{1}[0-9LMNPQRSTUV]{2}[A-Z]{1}[0-9LMNPQRSTUV]{3}[A-Z]{1}$/i
 
 const METODI: { id: MetodoPagamento; icona: string; titolo: string; nota: string }[] = [
   { id: 'paypal', icona: '💳', titolo: 'PayPal', nota: 'Pagamento online immediato' },
@@ -25,6 +24,10 @@ export const RITORNO_KEY = 'amazing:ritorno'
 export default function CheckoutForm({ bene }: { bene: Bene }) {
   // Amazing o pagina /dona: cambia causale e link di ritorno, non il flusso.
   const serie = SERIE[bene.canale ?? 'AMZ']
+  // Enti e aziende possono donare solo dalla pagina /dona (serie MIR).
+  const ammetteEnti = bene.canale === 'MIR'
+  const [tipo, setTipo] = useState<TipoDonatore>('fisica')
+  const ente = ammetteEnti && tipo === 'giuridica'
   const [form, setForm] = useState({
     nome: '',
     cognome: '',
@@ -49,7 +52,10 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
 
     const importo = Number(form.importo.replace(',', '.'))
     if (!metodo) return setErrore('Scegli un metodo di pagamento')
-    if (!CF_REGEX.test(form.codiceFiscale.trim())) return setErrore('Codice fiscale non valido')
+    const codice = normalizzaCodice(form.codiceFiscale)
+    if (!codiceValido(codice, ente ? 'giuridica' : 'fisica')) {
+      return setErrore(ente ? 'Codice fiscale o Partita IVA non validi' : 'Codice fiscale non valido')
+    }
     if (!privacy) return setErrore("Devi accettare l'informativa privacy")
     if (bene.flexibleAmount && importo < bene.price) {
       return setErrore(`La donazione minima è € ${bene.price.toFixed(2)}`)
@@ -58,12 +64,13 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     const payload = {
       goodId: bene.spItemId,
       nome: form.nome.trim(),
-      cognome: form.cognome.trim(),
+      cognome: ente ? '' : form.cognome.trim(),
       indirizzo: form.indirizzo.trim(),
-      codiceFiscale: form.codiceFiscale.trim().toUpperCase(),
+      codiceFiscale: codice,
       email: form.email.trim(),
       importo,
       metodo,
+      tipoDonatore: ente ? 'giuridica' : 'fisica',
     }
 
     setLoading(true)
@@ -164,14 +171,57 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nome" value={form.nome} onChange={(v) => set('nome', v)} required />
-        <Field label="Cognome" value={form.cognome} onChange={(v) => set('cognome', v)} required />
-      </div>
-      <Field label="Indirizzo completo" value={form.indirizzo} onChange={(v) => set('indirizzo', v)} required />
+      {ammetteEnti && (
+        <fieldset>
+          <legend className="mb-2 block text-sm font-semibold text-brand-darker">Chi dona?</legend>
+          <div className="grid grid-cols-2 gap-3">
+            {(
+              [
+                { id: 'fisica', titolo: 'Persona fisica', nota: 'Privato cittadino' },
+                { id: 'giuridica', titolo: 'Ente o azienda', nota: 'Impresa, associazione, ente' },
+              ] as const
+            ).map((t) => (
+              <button
+                type="button"
+                key={t.id}
+                onClick={() => setTipo(t.id)}
+                aria-pressed={tipo === t.id}
+                className={`rounded-xl border p-3 text-center transition ${
+                  tipo === t.id
+                    ? 'border-brand bg-brand/5 ring-2 ring-brand/30'
+                    : 'border-brand/20 hover:border-brand/40'
+                }`}
+              >
+                <span className="block text-sm font-bold text-brand-darker">{t.titolo}</span>
+                <span className="block text-xs text-brand-darker/60">{t.nota}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
+      {ente ? (
+        <Field
+          label="Ragione sociale / denominazione"
+          value={form.nome}
+          onChange={(v) => set('nome', v)}
+          required
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Nome" value={form.nome} onChange={(v) => set('nome', v)} required />
+          <Field label="Cognome" value={form.cognome} onChange={(v) => set('cognome', v)} required />
+        </div>
+      )}
+      <Field
+        label={ente ? 'Sede legale (indirizzo completo)' : 'Indirizzo completo'}
+        value={form.indirizzo}
+        onChange={(v) => set('indirizzo', v)}
+        required
+      />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field
-          label="Codice fiscale"
+          label={ente ? 'Partita IVA o codice fiscale' : 'Codice fiscale'}
           value={form.codiceFiscale}
           onChange={(v) => set('codiceFiscale', v.toUpperCase())}
           required
