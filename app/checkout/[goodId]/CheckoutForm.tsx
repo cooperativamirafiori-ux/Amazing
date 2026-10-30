@@ -6,8 +6,8 @@ import type { Bene, Prenotazione, MetodoPagamento } from '@/types'
 import { SERIE } from '@/lib/serie'
 import { codiceValido, normalizzaCodice, type TipoDonatore } from '@/lib/donatore'
 
-const BONIFICO_IBAN = 'IT31A0200801125000101772702'
-const BONIFICO_BANCA = 'Banca Unicredit'
+const BONIFICO_IBAN = 'IT49O3609201600581979667619'
+const BONIFICO_BANCA = 'Qonto SA'
 
 const METODI: { id: MetodoPagamento; icona: string; titolo: string; nota: string }[] = [
   { id: 'paypal', icona: '💳', titolo: 'PayPal', nota: 'Pagamento online immediato' },

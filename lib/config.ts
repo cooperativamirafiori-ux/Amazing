@@ -9,8 +9,8 @@ export const COOP = {
 }
 
 export const BONIFICO = {
-  iban: process.env.BONIFICO_IBAN || 'IT31A0200801125000101772702',
-  banca: process.env.BONIFICO_BANCA || 'Banca Unicredit',
+  iban: process.env.BONIFICO_IBAN || 'IT49O3609201600581979667619',
+  banca: process.env.BONIFICO_BANCA || 'Qonto SA',
 }
 
 export const BRAND = {
