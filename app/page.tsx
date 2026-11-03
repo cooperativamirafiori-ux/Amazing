@@ -57,6 +57,11 @@ export default async function ShopPage() {
           {COOP.nome} · &ldquo;{COOP.motto}&rdquo;
         </p>
         <p className="mt-1 text-xs text-white/60">{COOP.sito}</p>
+        <p className="mt-2 text-xs">
+          <Link href="/dona/privacy" className="underline hover:text-white">
+            Informativa privacy donatori
+          </Link>
+        </p>
       </footer>
     </main>
   )

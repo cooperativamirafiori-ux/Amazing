@@ -13,7 +13,9 @@
  *                 Canale (testo: vuoto = Amazing, "MIR" = pagina /dona)
  *   Prenotazioni: Title(id logico), NumeroRicevuta, GoodId, GoodName, Nome,
  *                 Cognome, Indirizzo, CodiceFiscale, Email, Importo, Data,
- *                 Metodo, Stato, Consegnato(yes/no), PdfUrl
+ *                 Metodo, Stato, Consegnato(yes/no), PdfUrl,
+ *                 PresaVisioneInformativa(yes/no), DataOraPresaVisione(data/ora),
+ *                 VersioneInformativa (testo, es. "INF08 v1.0")
  *
  * Stato pagamento (Stato) e stato consegna (Consegnato) sono due colonne
  * indipendenti: Stato riguarda solo il pagamento (auto per paypal/satispay,
@@ -30,6 +32,7 @@ import {
 } from '@/lib/graph'
 import type { Bene, Prenotazione, NuovaPrenotazione, StatoPagamento } from '@/types'
 import { normalizzaSerie, serieDaNumero, SERIE_DEFAULT, type Serie } from '@/lib/serie'
+import { INFORMATIVA } from '@/lib/informativa'
 
 const SITE = () => process.env.SHAREPOINT_SITE_ID!
 const BENI = () => process.env.SP_LIST_BENI!
@@ -289,6 +292,7 @@ export async function creaPrenotazione(
 
   try {
     const id = Date.now().toString()
+    const adesso = new Date().toISOString()
     const fields = {
       Title: id,
       NumeroRicevuta: '',
@@ -300,9 +304,14 @@ export async function creaPrenotazione(
       CodiceFiscale: p.codiceFiscale.toUpperCase(),
       Email: p.email,
       Importo: importo,
-      Data: new Date().toISOString(),
+      Data: adesso,
       Metodo: p.metodo,
       Stato: 'pending',
+      // Prova della presa visione dell'informativa: sempre Sì, perché senza
+      // la spunta il modulo non parte (validaPrenotazione).
+      PresaVisioneInformativa: true,
+      DataOraPresaVisione: adesso,
+      VersioneInformativa: INFORMATIVA.versione,
     }
     const created = await graphPost<any>(prenBase(), { fields })
     const spItemId = String(created.id)
@@ -553,6 +562,86 @@ export async function cambiaConsegna(
 
 export async function eliminaPrenotazione(spItemId: string): Promise<void> {
   await graphDelete(`${prenBase()}/${spItemId}`)
+}
+
+/**
+ * Valori GREZZI della colonna Stato che indicano una donazione non
+ * perfezionata. Si guarda il valore grezzo, non `normalizeStatus`, perché
+ * quest'ultimo tratta come "pending" anche valori vuoti o sconosciuti: una riga
+ * con uno stato strano non deve mai essere cancellata in automatico.
+ */
+const STATI_NON_PERFEZIONATI = new Set([
+  'pending',
+  'pending_paypal',
+  'pending_satispay',
+  'pending_bonifico',
+  'in_attesa',
+  'annullato',
+  'canceled',
+  'cancelled',
+])
+
+export type EsitoPulizia = {
+  mesi: number
+  trovate: number
+  eliminate: number
+  restanti: number
+  errori: number
+}
+
+/**
+ * Conservazione (informativa INF08, punto 5): i moduli per cui la donazione non
+ * risulta perfezionata vanno cancellati entro 6 mesi dalla compilazione.
+ * Elimina le prenotazioni (Amazing e /dona) con Stato pending/annullato e Data
+ * più vecchia di `mesi`. Le donazioni pagate (Stato = paid) non si toccano mai:
+ * si conservano 10 anni. Se una riga pending teneva riservato un pezzo, il pezzo
+ * viene liberato prima della cancellazione.
+ *
+ * Nessun dato personale nei log: solo conteggi.
+ */
+export async function eliminaModuliNonPerfezionati(
+  mesi = 6,
+  maxPerGiro = 50
+): Promise<EsitoPulizia> {
+  const limite = new Date()
+  limite.setMonth(limite.getMonth() - mesi)
+
+  const res = await graphGet<{ value: any[] }>(
+    `${prenBase()}?$expand=fields($select=Stato,Data,GoodId)&$top=2000`,
+    PREFER_NON_INDEXED
+  )
+  const candidate = res.value.filter((item) => {
+    const f = item.fields ?? {}
+    const stato = String(f.Stato ?? '').trim().toLowerCase()
+    if (!STATI_NON_PERFEZIONATI.has(stato)) return false
+    const t = new Date(String(f.Data ?? '')).getTime()
+    // Senza data valida non si sa quanto è vecchia: la si lascia stare.
+    return !isNaN(t) && t < limite.getTime()
+  })
+
+  let eliminate = 0
+  let errori = 0
+  for (const item of candidate.slice(0, maxPerGiro)) {
+    const f = item.fields ?? {}
+    try {
+      const stato = String(f.Stato ?? '').trim().toLowerCase()
+      if (normalizeStatus(stato) === 'pending' && f.GoodId) {
+        const bene = await getBeneByLogicalId(String(f.GoodId))
+        if (bene) await adjustVenduti(bene.spItemId, -1).catch(() => {})
+      }
+      await graphDelete(`${prenBase()}/${item.id}`)
+      eliminate++
+    } catch {
+      errori++
+    }
+  }
+  return {
+    mesi,
+    trovate: candidate.length,
+    eliminate,
+    restanti: Math.max(0, candidate.length - eliminate - errori),
+    errori,
+  }
 }
 
 /** Trova un bene dal suo id logico (usato per aggiornare Venduti da una prenotazione). */

@@ -29,6 +29,10 @@ export function validaPrenotazione(
   }
   const importo = Number(body.importo)
   if (!importo || importo <= 0) return { ok: false, error: 'Importo non valido' }
+  // Presa visione dell'informativa privacy: obbligatoria (vedi CheckoutForm).
+  if (body?.presaVisione !== true) {
+    return { ok: false, error: "Per procedere è necessario dichiarare di aver letto l'informativa privacy." }
+  }
 
   return {
     ok: true,

@@ -25,10 +25,15 @@
  * vecchie da poter essere verificate; il cron dice *quando* si guarda. Con un
  * giro al giorno un pezzo abbandonato può restare bloccato fino a 24 ore, a
  * meno che un operatore non prema il pulsante.
+ *
+ * PULIZIA GDPR (solo nel giro del cron, non dal pulsante admin): dopo le
+ * verifiche cancella le prenotazioni non perfezionate (pending/annullato) più
+ * vecchie di 6 mesi, come previsto dall'informativa INF08 punto 5. Vedi
+ * `eliminaModuliNonPerfezionati` in lib/lists.ts. Le pagate non si toccano.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { guardAdmin } from '@/lib/api-guard'
-import { getPendingDaVerificare } from '@/lib/lists'
+import { getPendingDaVerificare, eliminaModuliNonPerfezionati } from '@/lib/lists'
 import { verificaPrenotazione, sogliaVerificaMinuti } from '@/lib/verifica-pagamento'
 import type { EsitoVerifica } from '@/lib/verifica-pagamento'
 
@@ -78,7 +83,20 @@ async function esegui(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, ...riepilogo, esiti })
+  // Pulizia dei moduli non perfezionati più vecchi di 6 mesi (solo dal cron).
+  let pulizia: Awaited<ReturnType<typeof eliminaModuliNonPerfezionati>> | { errore: string } | null =
+    null
+  if (daCron) {
+    try {
+      pulizia = await eliminaModuliNonPerfezionati(6, 30)
+      console.log('[cron/pulizia-gdpr]', JSON.stringify(pulizia))
+    } catch (err: any) {
+      pulizia = { errore: String(err?.message ?? err) }
+      console.error('[cron/pulizia-gdpr] fallita:', pulizia.errore)
+    }
+  }
+
+  return NextResponse.json({ ok: true, ...riepilogo, esiti, pulizia })
 }
 
 export async function GET(req: NextRequest) {

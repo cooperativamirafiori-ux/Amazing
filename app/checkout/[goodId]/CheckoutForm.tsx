@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { Bene, Prenotazione, MetodoPagamento } from '@/types'
 import { SERIE } from '@/lib/serie'
 import { codiceValido, normalizzaCodice, type TipoDonatore } from '@/lib/donatore'
+import { INFORMATIVA } from '@/lib/informativa'
 
 const BONIFICO_IBAN = 'IT49O3609201600581979667619'
 const BONIFICO_BANCA = 'Qonto SA'
@@ -56,7 +57,9 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     if (!codiceValido(codice, ente ? 'giuridica' : 'fisica')) {
       return setErrore(ente ? 'Codice fiscale o Partita IVA non validi' : 'Codice fiscale non valido')
     }
-    if (!privacy) return setErrore("Devi accettare l'informativa privacy")
+    if (!privacy) {
+      return setErrore("Per procedere è necessario dichiarare di aver letto l'informativa privacy.")
+    }
     if (bene.flexibleAmount && importo < bene.price) {
       return setErrore(`La donazione minima è € ${bene.price.toFixed(2)}`)
     }
@@ -71,6 +74,8 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
       importo,
       metodo,
       tipoDonatore: ente ? 'giuridica' : 'fisica',
+      // Presa visione dell'informativa: il server rifiuta l'invio senza.
+      presaVisione: privacy,
     }
 
     setLoading(true)
@@ -265,18 +270,40 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
         </div>
       </fieldset>
 
-      <label className="mt-6 flex items-start gap-3 text-sm text-brand-darker/80">
-        <input
-          type="checkbox"
-          checked={privacy}
-          onChange={(e) => setPrivacy(e.target.checked)}
-          className="mt-1"
-        />
-        <span>
-          Ho letto e accetto il trattamento dei dati personali ai sensi del GDPR 679/2016 per
-          l'emissione della ricevuta di donazione.
-        </span>
-      </label>
+      {ente && (
+        <p className="mt-4 rounded-lg bg-brand-bg px-4 py-3 text-sm text-brand-darker/80">
+          Se doni per conto di un ente o di un'azienda, dichiari di essere autorizzato a farlo e a
+          comunicare i dati del referente indicato.
+        </p>
+      )}
+
+      {/* Unica casella: attesta la presa visione dell'informativa (non è un
+          consenso). Obbligatoria, non spuntata all'apertura. */}
+      <div className="mt-6 text-sm text-brand-darker/80">
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={privacy}
+            onChange={(e) => setPrivacy(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            Dichiaro di aver letto l'
+            <a
+              href={INFORMATIVA.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-brand underline hover:text-brand-dark"
+            >
+              Informativa privacy donatori
+            </a>{' '}
+            (art. 13 GDPR).
+          </span>
+        </label>
+        <p className="mt-1 pl-7 text-xs text-brand-darker/60">
+          La donazione online è riservata ai maggiorenni.
+        </p>
+      </div>
 
       {errore && (
         <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{errore}</p>

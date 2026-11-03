@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getProgettiDona } from '@/lib/lists'
 import { COOP } from '@/lib/config'
@@ -71,6 +72,11 @@ export default async function DonaPage({
           {COOP.nome} · &ldquo;{COOP.motto}&rdquo;
         </p>
         <p className="mt-1 text-xs text-white/60">{COOP.sito}</p>
+        <p className="mt-2 text-xs">
+          <Link href="/dona/privacy" className="underline hover:text-white">
+            Informativa privacy donatori
+          </Link>
+        </p>
       </footer>
     </main>
   )
