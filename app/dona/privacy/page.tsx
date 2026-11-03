@@ -9,10 +9,10 @@ export const metadata: Metadata = {
 }
 
 /**
- * Informativa privacy donatori (INF08 v1.0), pubblicata come pagina.
+ * Informativa privacy donatori (INF08 v1.1), pubblicata come pagina.
  *
  * Il TESTO deve restare identico al PDF approvato
- * (public/INF08_Informativa_DONATORI_VER_1.0.pdf): si può cambiare la grafica,
+ * (public/INF08_Informativa_DONATORI_VER_1.1.pdf): si può cambiare la grafica,
  * non il contenuto. Ogni nuova versione dell'informativa va recepita qui, nel
  * PDF e in `INFORMATIVA.versione` (lib/informativa.ts), che finisce nella
  * colonna VersioneInformativa di ogni prenotazione.
@@ -34,7 +34,7 @@ const INDICE = [
   '7. CONDIVISIONE DEI DATI PERSONALI',
   '8. OBBLIGO DI CONFERIMENTO DEI DATI ED EVENTUALI CONSEGUENZE IN CASO DI RIFIUTO',
   '9. TIPOLOGIA DEI DATI PERSONALI RACCOLTI',
-  '10. RESPONSABILE DELLA PROTEZIONE DEI DATI',
+  '10. ORGANISMO DI CONTROLLO PER LA PROTEZIONE DEI DATI',
   '11. DIRITTI DI PROTEZIONE DEI DATI',
   '12. MODIFICHE ALL\'INFORMATIVA SULLA PRIVACY',
   '13. CANCELLAZIONI OPPOSIZIONE E RETTIFICHE',
@@ -71,7 +71,7 @@ const SEZIONI: Sezione[] = [
     titolo: '2. RACCOLTA DATI PERSONALI E BASI GIURIDICHE',
     blocchi: [
       {
-        p: 'I dati sono forniti direttamente dal Donatore compilando il modulo della pagina donazioni. Le informazioni inserite sono registrate direttamente in liste SharePoint dell’ambiente Microsoft 365 della Cooperativa; la pagina web non le conserva in altri archivi.',
+        p: 'I dati sono forniti direttamente dal Donatore compilando il modulo della pagina donazioni. Le informazioni inserite sono trasmesse tramite connessione cifrata a funzioni applicative ospitate da Vercel Inc., che le inoltrano alle liste SharePoint dell’ambiente Microsoft 365 della Cooperativa senza conservarle.',
       },
       {
         p: 'I dati di pagamento (carta, conto PayPal, account Satispay) non sono raccolti né conservati dalla Cooperativa: sono trattati direttamente da PayPal e Satispay in qualità di autonomi titolari del trattamento, secondo le rispettive informative privacy. In caso di bonifico, la Cooperativa riceve dalla propria banca i dati dell’ordinante riportati nella disposizione (nome, IBAN, causale).',
@@ -144,7 +144,7 @@ const SEZIONI: Sezione[] = [
     titolo: '6. TRASFERIMENTO INTERNAZIONALE DI DATI',
     blocchi: [
       {
-        p: 'I dati inseriti nel modulo sono archiviati esclusivamente nell’ambiente Microsoft 365 della Cooperativa, ospitato in data center situati nell’Unione Europea. La pagina web è erogata dal fornitore di hosting Vercel Inc., con sede negli Stati Uniti: Vercel non memorizza i dati del modulo, che vengono trasmessi tramite connessione cifrata direttamente alle liste SharePoint della Cooperativa; tratta unicamente i dati tecnici di navigazione (ad es. indirizzo IP) necessari al funzionamento e alla sicurezza della pagina.',
+        p: 'I dati inseriti nel modulo sono archiviati esclusivamente nell’ambiente Microsoft 365 della Cooperativa, ospitato in data center situati nell’Unione Europea. La pagina web è erogata da Vercel Inc., con sede negli Stati Uniti: i dati inseriti nel modulo sono trasmessi tramite connessione cifrata a funzioni applicative ospitate da Vercel ed eseguite in data center situati nell’Unione Europea (Francoforte), che li inoltrano alle liste SharePoint della Cooperativa senza conservarli. Vercel tratta inoltre i dati tecnici di navigazione (ad es. indirizzo IP) necessari al funzionamento e alla sicurezza della pagina.',
       },
       {
         p: 'Eventuali trasferimenti o accessi da Paesi terzi da parte di tali fornitori avvengono sulla base delle garanzie previste dal Capo V del GDPR (artt. 44-50), quali la decisione di adeguatezza relativa all’EU-US Data Privacy Framework per i soggetti certificati e/o le Clausole Contrattuali Standard approvate dalla Commissione Europea.',
@@ -160,7 +160,7 @@ const SEZIONI: Sezione[] = [
       { p: 'I dati possono essere trattati inoltre da:' },
       {
         ul: [
-          'fornitori designati Responsabili del trattamento ai sensi dell’art. 28 GDPR: Microsoft (servizi Microsoft 365 e SharePoint, in cui sono archiviati i dati), Vercel Inc. (hosting della pagina donazioni, limitatamente ai dati tecnici di navigazione) e l’eventuale consulente che assiste la Cooperativa negli adempimenti contabili e fiscali;',
+          'fornitori designati Responsabili del trattamento ai sensi dell’art. 28 GDPR: Microsoft (servizi Microsoft 365 e SharePoint, in cui sono archiviati i dati), Vercel Inc. (hosting della pagina donazioni: dati tecnici di navigazione e dati del modulo in transito, senza conservazione) e l’eventuale consulente che assiste la Cooperativa negli adempimenti contabili e fiscali;',
           'soggetti che operano come autonomi titolari: PayPal e Satispay per i pagamenti effettuati con tali servizi, l’istituto bancario della Cooperativa per i bonifici, l’Agenzia delle Entrate e le altre autorità nei casi previsti dalla legge.',
         ],
       },
@@ -184,7 +184,7 @@ const SEZIONI: Sezione[] = [
           'dati anagrafici e identificativi: nome e cognome, codice fiscale, indirizzo; per gli enti, denominazione, codice fiscale o partita IVA e dati del referente;',
           'dati di contatto: indirizzo e-mail;',
           'dati della donazione: importo, data, progetto scelto, metodo di pagamento ed esito; per i bonifici, i dati dell’ordinante;',
-          'data e ora di presa visione dell’informativa;',
+          'data, ora e versione dell’informativa di cui si è presa visione;',
           'dati tecnici di navigazione (ad es. indirizzo IP, tipo di browser, data e ora di accesso), trattati dal fornitore di hosting per il funzionamento e la sicurezza della pagina.',
         ],
       },
@@ -192,7 +192,7 @@ const SEZIONI: Sezione[] = [
     ],
   },
   {
-    titolo: '10. RESPONSABILE DELLA PROTEZIONE DEI DATI',
+    titolo: '10. ORGANISMO DI CONTROLLO PER LA PROTEZIONE DEI DATI',
     blocchi: [
       {
         p: 'Il Titolare ha istituito un Organismo di Controllo per la protezione dei dati, contattabile all’indirizzo ocgdpr@cooperativamirafiori.com.',
@@ -241,7 +241,7 @@ const SEZIONI: Sezione[] = [
     titolo: '14. INFORMAZIONI E REVISIONI',
     blocchi: [
       { p: 'Il Titolare del trattamento è responsabile della presente informativa.' },
-      { p: 'Versione 1.0 – data di ultima revisione: 03/11/2026.' },
+      { p: 'Versione 1.1 – data di ultima revisione: 03/11/2026.' },
     ],
   },
 ]
@@ -321,7 +321,7 @@ export default function InformativaDonatoriPage() {
       </article>
 
       <footer className="mt-4 bg-gradient-to-br from-brand-dark to-brand py-6 text-center text-white/85">
-        <p className="text-sm font-semibold">Versione 1.0 – ultima revisione 03/11/2026</p>
+        <p className="text-sm font-semibold">Versione 1.1 – ultima revisione 03/11/2026</p>
         <p className="mt-1 text-xs text-white/60">
           {COOP.nome} · {COOP.sito}
         </p>

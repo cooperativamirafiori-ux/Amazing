@@ -7,7 +7,7 @@
  *     nuova prenotazione, così si sa quale testo ha visto ciascun donatore.
  */
 export const INFORMATIVA = {
-  versione: 'INF08 v1.0',
+  versione: 'INF08 v1.1',
   url: '/dona/privacy',
-  pdf: '/INF08_Informativa_DONATORI_VER_1.0.pdf',
+  pdf: '/INF08_Informativa_DONATORI_VER_1.1.pdf',
 } as const
