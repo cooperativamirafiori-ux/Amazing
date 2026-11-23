@@ -35,6 +35,7 @@ const PROGETTI = [
   },
   { Title: 'Casa Artemisia', Descrizione: '' },
   { Title: 'CPG Torino', Descrizione: '' },
+  { Title: 'Centro Antiviolenza', Descrizione: '' },
 ]
 
 function loadEnvLocal() {
