@@ -118,7 +118,7 @@ function corpoRitiroHtml(): string {
 </td></tr>
 <tr><td style="padding:36px 40px;">
   <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 16px;">Grazie dell'ordine.</p>
-  <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 16px;">Nei prossimi 5 giorni riceverai una mail con le date e gli orari per il ritiro.</p>
+  <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 16px;">Nei prossimi 8 giorni riceverai una mail con le date e gli orari per il ritiro.</p>
   <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 16px;">Ti chiediamo il favore di non chiamare in cooperativa prima di aver ricevuto la mail, a meno di estrema urgenza o problematiche particolari.</p>
   <p style="color:#333;font-size:15px;line-height:1.8;margin:0 0 24px;">Ti ringraziamo per la comprensione.</p>
   <p style="color:#1a3a52;font-size:15px;line-height:1.8;margin:0;font-weight:700;">Lo staff Amazing</p>
@@ -132,7 +132,7 @@ function corpoRitiroHtml(): string {
 
 /**
  * Email informativa post-pagamento (distinta dalla ricevuta fiscale): avvisa
- * il donatore che riceverà entro 5 giorni data/orario di ritiro e chiede di
+ * il donatore che riceverà entro 8 giorni data/orario di ritiro e chiede di
  * non chiamare in cooperativa prima di quella mail.
  */
 export async function inviaEmailRitiro(p: Prenotazione): Promise<void> {
