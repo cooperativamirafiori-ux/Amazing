@@ -5,13 +5,15 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Brand Progetto Amazing (dal frontend v4)
+        // Brand Progetto Amazing (dal frontend v4). I valori stanno in variabili
+        // CSS (app/globals.css) così una sezione può cambiare palette con una
+        // sola classe: `.tema-natale` per la vetrina Natale.
         brand: {
-          DEFAULT: '#2C7BB8',
-          dark: '#1a5a8a',
-          darker: '#1a3a52',
-          accent: '#E87A4A',
-          bg: '#f0f6fb',
+          DEFAULT: 'rgb(var(--brand) / <alpha-value>)',
+          dark: 'rgb(var(--brand-dark) / <alpha-value>)',
+          darker: 'rgb(var(--brand-darker) / <alpha-value>)',
+          accent: 'rgb(var(--brand-accent) / <alpha-value>)',
+          bg: 'rgb(var(--brand-bg) / <alpha-value>)',
         },
       },
       fontFamily: {

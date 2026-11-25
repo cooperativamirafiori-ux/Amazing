@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { creaPrenotazione, aggiornaPrenotazione, annullaERilascia } from '@/lib/lists'
 import { createPaypalOrder } from '@/lib/paypal'
 import { validaPrenotazione } from '@/lib/valida-prenotazione'
+import { descriviBene } from '@/lib/natale'
 import { appBaseUrl } from '@/lib/config'
 import { SERIE } from '@/lib/serie'
 
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     const base = appBaseUrl()
     const order = await createPaypalOrder({
       importo: pren.importo,
-      descrizione: `${SERIE[res.serie].causale} - ${pren.goodName}`,
+      descrizione: `${SERIE[res.serie].causale} - ${descriviBene(pren)}`,
       bookingId: pren.spItemId,
       returnUrl: `${base}/pagamento?paypal_confirm=${encodeURIComponent(pren.spItemId)}`,
       cancelUrl: `${base}/pagamento?paypal_cancel=${encodeURIComponent(pren.spItemId)}`,

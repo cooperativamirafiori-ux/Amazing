@@ -43,6 +43,10 @@ const LISTE = [
       { name: 'IdLogico', text: {} },
       // Vuoto = catalogo Amazing, "MIR" = progetto della pagina /dona
       { name: 'Canale', text: {} },
+      // Vetrina Natale (vedi lib/natale.ts): sezione e scorte per taglia (JSON)
+      { name: 'Sezione', text: {} },
+      { name: 'Taglie', text: {} },
+      { name: 'VendutiTaglie', text: {} },
     ],
   },
   {
@@ -66,6 +70,9 @@ const LISTE = [
       { name: 'SatispayPaymentId', text: {} },
       { name: 'SatispayStatus', text: {} },
       { name: 'PaypalOrderId', text: {} },
+      // Vetrina Natale: taglia scelta e numero di pezzi dell'ordine
+      { name: 'Taglia', text: {} },
+      { name: 'Pezzi', number: {} },
     ],
   },
   {

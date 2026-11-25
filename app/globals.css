@@ -4,6 +4,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Palette brand (canali RGB per supportare le opacità di Tailwind, es. bg-brand/10). */
+:root {
+  --brand: 44 123 184; /* #2C7BB8 */
+  --brand-dark: 26 90 138; /* #1a5a8a */
+  --brand-darker: 26 58 82; /* #1a3a52 */
+  --brand-accent: 232 122 74; /* #E87A4A */
+  --brand-bg: 240 246 251; /* #f0f6fb */
+}
+
+/* Vetrina Natale 2026: rosso, verde abete, oro, fondo crema. */
+.tema-natale {
+  --brand: 178 34 34; /* #B22222 rosso */
+  --brand-dark: 22 82 56; /* #165238 verde abete */
+  --brand-darker: 32 52 42; /* #20342A testo */
+  --brand-accent: 201 162 39; /* #C9A227 oro */
+  --brand-bg: 251 246 238; /* #FBF6EE crema */
+}
+
 html,
 body {
   padding: 0;

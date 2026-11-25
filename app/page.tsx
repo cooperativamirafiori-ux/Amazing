@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import { getBeniDisponibili } from '@/lib/lists'
+import { getBeni, inCatalogo, inVetrinaNatale } from '@/lib/lists'
 import { COOP } from '@/lib/config'
+import { NATALE } from '@/lib/natale'
 import ShopGrid from './ShopGrid'
 import type { Bene } from '@/types'
 
@@ -9,9 +10,13 @@ export const dynamic = 'force-dynamic'
 
 export default async function ShopPage() {
   let beni: Bene[] = []
+  // Il banner Natale compare solo se c'è almeno un prodotto in vetrina.
+  let natale = 0
   let errore = ''
   try {
-    beni = await getBeniDisponibili()
+    const tutti = await getBeni()
+    beni = tutti.filter(inCatalogo)
+    natale = tutti.filter(inVetrinaNatale).length
   } catch (e: any) {
     errore = e?.message ?? 'Errore nel caricamento del catalogo'
   }
@@ -42,6 +47,8 @@ export default async function ShopPage() {
         </div>
       </header>
 
+      {natale > 0 && <BannerNatale />}
+
       <section className="mx-auto max-w-6xl px-6 py-10">
         {errore ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
@@ -64,5 +71,41 @@ export default async function ShopPage() {
         </p>
       </footer>
     </main>
+  )
+}
+
+/** Banner cliccabile verso la vetrina /natale (palette natalizia). */
+function BannerNatale() {
+  return (
+    <div className="tema-natale mx-auto mt-8 max-w-6xl px-6">
+      <Link
+        href={NATALE.percorso}
+        className="group relative block overflow-hidden rounded-2xl bg-gradient-to-r from-brand-dark to-brand px-6 py-7 text-white shadow-md transition hover:shadow-xl sm:px-10"
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -right-4 -top-6 select-none text-8xl opacity-20 transition group-hover:rotate-12"
+        >
+          ❄
+        </span>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-[-1.5rem] right-24 hidden select-none text-7xl opacity-15 sm:block"
+        >
+          ❄
+        </span>
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-accent">
+              🎄 {NATALE.titolo}
+            </p>
+            <p className="font-display mt-1 text-2xl font-bold sm:text-3xl">{NATALE.sottotitolo}</p>
+          </div>
+          <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-brand shadow-sm transition group-hover:bg-brand-bg">
+            Scopri i regali →
+          </span>
+        </div>
+      </Link>
+    </div>
   )
 }

@@ -6,6 +6,7 @@ import type { Bene, Prenotazione, MetodoPagamento } from '@/types'
 import { SERIE } from '@/lib/serie'
 import { codiceValido, normalizzaCodice, type TipoDonatore } from '@/lib/donatore'
 import { INFORMATIVA } from '@/lib/informativa'
+import { NATALE, TAGLIE, type Taglia } from '@/lib/natale'
 
 const BONIFICO_IBAN = 'IT49O3609201600581979667619'
 const BONIFICO_BANCA = 'Qonto SA'
@@ -24,7 +25,25 @@ export const RITORNO_KEY = 'amazing:ritorno'
 
 export default function CheckoutForm({ bene }: { bene: Bene }) {
   // Amazing o pagina /dona: cambia causale e link di ritorno, non il flusso.
-  const serie = SERIE[bene.canale ?? 'AMZ']
+  const serieBase = SERIE[bene.canale ?? 'AMZ']
+  // Vetrina Natale: si sceglie quanti pezzi (e la taglia, se il prodotto ne ha).
+  // Stessa serie AMZ, cambia solo dove si torna a fine pagamento.
+  const natale = bene.sezione === 'NATALE'
+  const serie = natale
+    ? { ...serieBase, ritorno: NATALE.percorso, ritornoLabel: NATALE.ritornoLabel }
+    : serieBase
+  const taglieOfferte = bene.taglie ? TAGLIE.filter((t) => bene.taglie![t] !== undefined) : []
+  const [taglia, setTaglia] = useState<Taglia | null>(() => {
+    const disponibili = taglieOfferte.filter((t) => (bene.disponibiliTaglie[t] ?? 0) > 0)
+    return disponibili.length === 1 ? disponibili[0] : null
+  })
+  const [pezzi, setPezzi] = useState(1)
+  const maxPezzi = Math.min(
+    NATALE.maxPezzi,
+    bene.taglie ? (taglia ? bene.disponibiliTaglie[taglia] ?? 0 : NATALE.maxPezzi) : bene.available
+  )
+  /** Donazione minima (o fissa) per l'ordine: prezzo a pezzo × pezzi. */
+  const minimo = Math.round(bene.price * pezzi * 100) / 100
   // Enti e aziende possono donare solo dalla pagina /dona (serie MIR).
   const ammetteEnti = bene.canale === 'MIR'
   const [tipo, setTipo] = useState<TipoDonatore>('fisica')
@@ -60,8 +79,12 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     if (!privacy) {
       return setErrore("Per procedere è necessario dichiarare di aver letto l'informativa privacy.")
     }
-    if (bene.flexibleAmount && importo < bene.price) {
-      return setErrore(`La donazione minima è € ${bene.price.toFixed(2)}`)
+    if (taglieOfferte.length && !taglia) return setErrore('Scegli la taglia')
+    if (natale && (pezzi < 1 || pezzi > maxPezzi)) {
+      return setErrore(`Puoi scegliere da 1 a ${maxPezzi} pezzi`)
+    }
+    if (bene.flexibleAmount && importo < minimo) {
+      return setErrore(`La donazione minima è € ${minimo.toFixed(2)}`)
     }
 
     const payload = {
@@ -71,9 +94,11 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
       indirizzo: form.indirizzo.trim(),
       codiceFiscale: codice,
       email: form.email.trim(),
-      importo,
+      // Importo fisso: lo ricalcola il form (prezzo × pezzi), il server ricontrolla.
+      importo: bene.flexibleAmount ? importo : minimo,
       metodo,
       tipoDonatore: ente ? 'giuridica' : 'fisica',
+      ...(natale ? { pezzi, ...(taglia ? { taglia } : {}) } : {}),
       // Presa visione dell'informativa: il server rifiuta l'invio senza.
       presaVisione: privacy,
     }
@@ -127,7 +152,7 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     return (
       <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm">
         <h2 className="font-display text-2xl font-bold text-emerald-700">
-          {bene.flexibleAmount ? 'Donazione registrata!' : 'Prenotazione registrata!'}
+          {natale ? 'Regalo prenotato!' : bene.flexibleAmount ? 'Donazione registrata!' : 'Prenotazione registrata!'}
         </h2>
         <p className="mt-2 text-brand-darker/80">
           Completa la donazione con un bonifico bancario. Dopo la verifica riceverai la ricevuta
@@ -138,6 +163,14 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
           <Row label="Intestatario" value="Cooperativa Sociale Mirafiori" />
           <Row label="Banca" value={BONIFICO_BANCA} />
           <Row label="IBAN" value={BONIFICO_IBAN} mono />
+          {natale && (
+            <Row
+              label="Prodotto"
+              value={[bene.name, ok.taglia && `Taglia ${ok.taglia}`, `${ok.pezzi || pezzi} pz`]
+                .filter(Boolean)
+                .join(' · ')}
+            />
+          )}
           <Row label="Importo" value={`€ ${Number(ok.importo).toFixed(2)}`} />
           <Row label="Causale" value={causale} />
         </dl>
@@ -172,9 +205,89 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
           <h2 className="font-display text-xl font-bold text-brand-darker">{bene.name}</h2>
           <p className="text-sm text-brand-darker/70">
             {bene.flexibleAmount ? 'Donazione minima' : 'Donazione'} € {bene.price.toFixed(2)}
+            {natale && ' a pezzo'}
           </p>
         </div>
       </div>
+
+      {natale && (
+        <div className="mb-6 rounded-xl bg-brand-bg p-5">
+          {taglieOfferte.length > 0 && (
+            <fieldset>
+              <legend className="mb-2 block text-sm font-semibold text-brand-darker">Taglia</legend>
+              <div className="flex flex-wrap gap-2">
+                {taglieOfferte.map((t) => {
+                  const disp = bene.disponibiliTaglie[t] ?? 0
+                  const esaurita = disp <= 0
+                  return (
+                    <button
+                      type="button"
+                      key={t}
+                      disabled={esaurita}
+                      aria-pressed={taglia === t}
+                      onClick={() => {
+                        setTaglia(t)
+                        setPezzi((n) => Math.max(1, Math.min(n, disp, NATALE.maxPezzi)))
+                      }}
+                      title={esaurita ? 'Esaurita' : `${disp} disponibili`}
+                      className={`min-w-[3.5rem] rounded-lg border px-4 py-2 text-sm font-bold transition ${
+                        esaurita
+                          ? 'cursor-not-allowed border-brand-darker/10 bg-white text-brand-darker/30 line-through'
+                          : taglia === t
+                          ? 'border-brand bg-brand text-white ring-2 ring-brand/30'
+                          : 'border-brand/30 bg-white text-brand-darker hover:border-brand'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  )
+                })}
+              </div>
+            </fieldset>
+          )}
+
+          <div className={`flex flex-wrap items-end justify-between gap-4 ${taglieOfferte.length ? 'mt-5' : ''}`}>
+            <div>
+              <span className="mb-2 block text-sm font-semibold text-brand-darker">Quantità</span>
+              <div className="inline-flex items-center overflow-hidden rounded-lg border border-brand/30 bg-white">
+                <button
+                  type="button"
+                  aria-label="Un pezzo in meno"
+                  onClick={() => setPezzi((n) => Math.max(1, n - 1))}
+                  disabled={pezzi <= 1}
+                  className="px-4 py-2 text-lg font-bold text-brand disabled:opacity-30"
+                >
+                  −
+                </button>
+                <span className="min-w-[3rem] text-center font-bold text-brand-darker" aria-live="polite">
+                  {pezzi}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Un pezzo in più"
+                  onClick={() => setPezzi((n) => Math.min(maxPezzi, n + 1))}
+                  disabled={pezzi >= maxPezzi}
+                  className="px-4 py-2 text-lg font-bold text-brand disabled:opacity-30"
+                >
+                  +
+                </button>
+              </div>
+              {taglieOfferte.length > 0 && !taglia && (
+                <span className="mt-1 block text-xs text-brand-darker/60">Scegli prima la taglia</span>
+              )}
+            </div>
+            <div className="text-right">
+              <span className="block text-xs uppercase tracking-wide text-brand-darker/60">
+                {bene.flexibleAmount ? 'Donazione minima' : 'Donazione'}
+              </span>
+              <span className="text-2xl font-bold text-brand">€ {minimo.toFixed(2)}</span>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-brand-darker/60">
+            Per taglie o prodotti diversi fai un ordine per ciascuno.
+          </p>
+        </div>
+      )}
 
       {ammetteEnti && (
         <fieldset>
@@ -236,7 +349,7 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
 
       {bene.flexibleAmount && (
         <Field
-          label={`Importo donazione (minimo € ${bene.price.toFixed(2)})`}
+          label={`Importo donazione (minimo € ${minimo.toFixed(2)})`}
           type="text"
           value={form.importo}
           onChange={(v) => set('importo', v)}

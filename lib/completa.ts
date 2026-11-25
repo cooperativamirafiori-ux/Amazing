@@ -64,7 +64,9 @@ export function dataRicevutaDa(pren: Prenotazione): string {
 async function richiedeRitiro(pren: Prenotazione): Promise<boolean> {
   try {
     const bene = await getBeneByLogicalId(pren.goodId)
-    return !bene?.flexibleAmount
+    // I prodotti della vetrina Natale con donazione minima sono comunque
+    // oggetti da ritirare: l'importo libero lì non vuol dire "donazione pura".
+    return !bene?.flexibleAmount || bene.sezione === 'NATALE'
   } catch (err) {
     console.error('[completa] lettura bene per email ritiro fallita:', err)
     return true

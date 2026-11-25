@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { guardAdmin } from '@/lib/api-guard'
 import { updateBene, deleteBene, getBeneBySpId } from '@/lib/lists'
 import type { Bene } from '@/types'
+import { leggiTaglie, TAGLIE } from '@/lib/natale'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,39 @@ export async function PATCH(
     if (body.image !== undefined) patch.image = String(body.image).trim()
     if (body.flexibleAmount !== undefined) patch.flexibleAmount = !!body.flexibleAmount
     if (body.canale !== undefined) patch.canale = body.canale === 'MIR' ? 'MIR' : 'AMZ'
+    if (body.sezione !== undefined) patch.sezione = body.sezione === 'NATALE' ? 'NATALE' : 'AMAZING'
+
+    // Scorte per taglia (vetrina Natale). null/{} = il bene non ha taglie.
+    if (body.taglie !== undefined) {
+      const taglie = leggiTaglie(body.taglie)
+      if (taglie) {
+        // Senza lo storico per taglia non si saprebbe da quale taglia scalare
+        // i pezzi già prenotati: meglio fermarsi che perdere il conteggio.
+        if (!attuale.taglie && attuale.venduti > 0) {
+          return NextResponse.json(
+            {
+              error: `Non si possono aggiungere le taglie a un bene con ${attuale.venduti} pezzi già prenotati: crea un nuovo prodotto.`,
+            },
+            { status: 400 }
+          )
+        }
+        for (const t of TAGLIE) {
+          const giaPresi = attuale.vendutiTaglie[t] ?? 0
+          if (giaPresi > 0 && (taglie[t] ?? 0) < giaPresi) {
+            return NextResponse.json(
+              { error: `Taglia ${t}: scorta troppo bassa, ci sono già ${giaPresi} pezzi prenotati o venduti.` },
+              { status: 400 }
+            )
+          }
+        }
+      } else if (attuale.taglie && attuale.venduti > 0) {
+        return NextResponse.json(
+          { error: 'Non si possono togliere le taglie a un bene con pezzi già prenotati.' },
+          { status: 400 }
+        )
+      }
+      patch.taglie = taglie
+    }
 
     if (body.price !== undefined) {
       const price = Number(body.price)
@@ -41,7 +75,8 @@ export async function PATCH(
       patch.price = price
     }
 
-    if (body.quantity !== undefined) {
+    // Con le taglie la quantità è la somma delle scorte: la calcola updateBene.
+    if (body.quantity !== undefined && !patch.taglie) {
       const quantity = Number(body.quantity)
       if (!Number.isInteger(quantity) || quantity < 0) {
         return NextResponse.json({ error: 'Quantità non valida' }, { status: 400 })

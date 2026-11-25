@@ -9,6 +9,7 @@ import { importoInLettere } from '@/lib/importo-in-lettere'
 import { SERIE, serieDaNumero, SERIE_DEFAULT } from '@/lib/serie'
 import { isPersonaGiuridica } from '@/lib/donatore'
 import type { Prenotazione } from '@/types'
+import { descriviBene } from '@/lib/natale'
 
 function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): string {
   const nomeCompleto = `${p.nome} ${p.cognome}`.trim()
@@ -50,7 +51,7 @@ function corpoHtml(p: Prenotazione, numeroRicevuta: string, dataStr: string): st
   </tr>
   <tr><td colspan="2" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${ente ? 'Sede legale' : 'Indirizzo'}</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.indirizzo}</p></td></tr>
   <tr>
-    <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${serie.etichettaBene}</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${p.goodName}</p></td>
+    <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">${serie.etichettaBene}</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${descriviBene(p)}</p></td>
     <td width="50%" style="padding:6px 12px;"><p style="margin:0;color:#8ab0c8;font-size:11px;text-transform:uppercase;font-weight:700;">Metodo pagamento</p><p style="margin:3px 0 0;color:#1a3a52;font-size:14px;">${metodo}</p></td>
   </tr>
   </table>

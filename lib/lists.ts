@@ -10,10 +10,13 @@
  * Nomi interni colonne attesi (vedi README per la creazione delle liste):
  *   Beni:         Title(name), Descrizione, Prezzo, Quantita, Venduti,
  *                 Immagine, ImportoLibero(yes/no), IdLogico,
- *                 Canale (testo: vuoto = Amazing, "MIR" = pagina /dona)
+ *                 Canale (testo: vuoto = Amazing, "MIR" = pagina /dona),
+ *                 Sezione (testo: vuoto = catalogo, "NATALE" = pagina /natale),
+ *                 Taglie, VendutiTaglie (testo JSON, scorta per taglia)
  *   Prenotazioni: Title(id logico), NumeroRicevuta, GoodId, GoodName, Nome,
  *                 Cognome, Indirizzo, CodiceFiscale, Email, Importo, Data,
  *                 Metodo, Stato, Consegnato(yes/no), PdfUrl,
+ *                 Taglia (testo), Pezzi (numero, vuoto = 1),
  *                 PresaVisioneInformativa(yes/no), DataOraPresaVisione(data/ora),
  *                 VersioneInformativa (testo, es. "INF08 v1.0")
  *
@@ -33,6 +36,17 @@ import {
 import type { Bene, Prenotazione, NuovaPrenotazione, StatoPagamento } from '@/types'
 import { normalizzaSerie, serieDaNumero, SERIE_DEFAULT, type Serie } from '@/lib/serie'
 import { INFORMATIVA } from '@/lib/informativa'
+import {
+  TAGLIE,
+  leggiTaglie,
+  scriviTaglie,
+  sommaTaglie,
+  normalizzaSezione,
+  isTaglia,
+  NATALE,
+  type ScortaTaglie,
+  type Taglia,
+} from '@/lib/natale'
 
 const SITE = () => process.env.SHAREPOINT_SITE_ID!
 const BENI = () => process.env.SP_LIST_BENI!
@@ -53,8 +67,19 @@ const PREFER_NON_INDEXED = {
 
 function mapBene(item: any): Bene {
   const f = item.fields ?? {}
-  const quantity = Number(f.Quantita ?? 0)
-  const venduti = Number(f.Venduti ?? 0)
+  const canale = normalizzaSerie(f.Canale)
+  const taglie = leggiTaglie(f.Taglie)
+  const vendutiTaglie = leggiTaglie(f.VendutiTaglie) ?? {}
+  // Con le taglie la scorta e i venduti "veri" sono quelli per taglia;
+  // Quantita/Venduti sono tenuti allineati alle somme (vedi adjustVenduti).
+  const quantity = taglie ? sommaTaglie(taglie) : Number(f.Quantita ?? 0)
+  const venduti = taglie ? sommaTaglie(vendutiTaglie) : Number(f.Venduti ?? 0)
+  const disponibiliTaglie: ScortaTaglie = {}
+  if (taglie) {
+    for (const t of TAGLIE) {
+      if (taglie[t] !== undefined) disponibiliTaglie[t] = Math.max(0, taglie[t]! - (vendutiTaglie[t] ?? 0))
+    }
+  }
   return {
     spItemId: String(item.id),
     id: String(f.IdLogico || item.id),
@@ -65,7 +90,12 @@ function mapBene(item: any): Bene {
     venduti,
     image: String(f.Immagine ?? ''),
     flexibleAmount: f.ImportoLibero === true || String(f.ImportoLibero).toLowerCase() === 'true',
-    canale: normalizzaSerie(f.Canale),
+    canale,
+    // La vetrina Natale esiste solo dentro Amazing: un progetto MIR non ci finisce.
+    sezione: canale === 'AMZ' ? normalizzaSezione(f.Sezione) : 'AMAZING',
+    taglie,
+    vendutiTaglie,
+    disponibiliTaglie,
     available: Math.max(0, quantity - venduti),
   }
 }
@@ -92,6 +122,8 @@ function mapPrenotazione(item: any): Prenotazione {
     satispayPaymentId: String(f.SatispayPaymentId ?? ''),
     satispayStatus: String(f.SatispayStatus ?? ''),
     paypalOrderId: String(f.PaypalOrderId ?? ''),
+    taglia: String(f.Taglia ?? ''),
+    pezzi: Math.max(1, Math.floor(Number(f.Pezzi ?? 1)) || 1),
   }
 }
 
@@ -124,7 +156,7 @@ function normalizeConsegnato(f: Record<string, unknown>): boolean {
 // ============================================================
 
 const BENE_SELECT =
-  '$expand=fields($select=Title,Descrizione,Prezzo,Quantita,Venduti,Immagine,ImportoLibero,IdLogico,Canale)'
+  '$expand=fields($select=Title,Descrizione,Prezzo,Quantita,Venduti,Immagine,ImportoLibero,IdLogico,Canale,Sezione,Taglie,VendutiTaglie)'
 
 /**
  * Ordine di visualizzazione del catalogo:
@@ -149,11 +181,22 @@ export async function getBeni(): Promise<Bene[]> {
 
 /**
  * Catalogo pubblico Amazing: solo beni con disponibilità > 0 e del canale
- * Amazing. I progetti della pagina /dona (canale MIR) non compaiono qui.
+ * Amazing. I progetti della pagina /dona (canale MIR) e i prodotti della
+ * vetrina Natale non compaiono qui.
  */
 export async function getBeniDisponibili(): Promise<Bene[]> {
-  return (await getBeni()).filter((b) => b.available > 0 && b.canale === 'AMZ')
+  return (await getBeni()).filter(inCatalogo)
 }
+
+/** Prodotti della vetrina Natale ancora disponibili (pagina /natale). */
+export async function getBeniNatale(): Promise<Bene[]> {
+  return (await getBeni()).filter(inVetrinaNatale)
+}
+
+export const inCatalogo = (b: Bene) =>
+  b.available > 0 && b.canale === 'AMZ' && b.sezione === 'AMAZING'
+export const inVetrinaNatale = (b: Bene) =>
+  b.available > 0 && b.canale === 'AMZ' && b.sezione === 'NATALE'
 
 /**
  * Progetti/servizi della pagina /dona (canale MIR) ancora attivi, dal più
@@ -187,6 +230,7 @@ export async function addBene(b: Partial<Bene>): Promise<Bene> {
     // Vuoto = Amazing: così i beni creati prima della colonna e quelli nuovi
     // del catalogo si comportano allo stesso modo.
     Canale: b.canale === 'MIR' ? 'MIR' : '',
+    ...campiNatale(b),
   }
   const created = await graphPost<any>(beniBase(), { fields })
   return (await getBeneBySpId(String(created.id)))!
@@ -201,7 +245,28 @@ export async function updateBene(spItemId: string, b: Partial<Bene>): Promise<vo
   if (b.image !== undefined) fields.Immagine = b.image
   if (b.flexibleAmount !== undefined) fields.ImportoLibero = !!b.flexibleAmount
   if (b.canale !== undefined) fields.Canale = b.canale === 'MIR' ? 'MIR' : ''
+  Object.assign(fields, campiNatale(b))
   await graphPatch(`${beniBase()}/${spItemId}/fields`, fields)
+}
+
+/**
+ * Colonne della vetrina Natale da scrivere su un bene. Si scrivono solo se
+ * il chiamante le ha passate (o se il bene è di Natale), così i beni classici
+ * non toccano colonne che su un ambiente non aggiornato potrebbero mancare.
+ * Con le taglie, `Quantita` diventa la somma delle scorte per taglia.
+ * `VendutiTaglie` non si tocca da qui: lo gestisce adjustVenduti.
+ */
+function campiNatale(b: Partial<Bene>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (b.sezione !== undefined)
+    out.Sezione = b.sezione === 'NATALE' && b.canale !== 'MIR' ? 'NATALE' : ''
+  if (b.taglie !== undefined) {
+    // leggiTaglie ripulisce anche quello che arriva grezzo dal body della API.
+    const taglie = leggiTaglie(b.taglie)
+    out.Taglie = scriviTaglie(taglie)
+    if (taglie) out.Quantita = sommaTaglie(taglie)
+  }
+  return out
 }
 
 export async function deleteBene(spItemId: string): Promise<void> {
@@ -209,30 +274,62 @@ export async function deleteBene(spItemId: string): Promise<void> {
 }
 
 /**
- * Incrementa (delta=+1) o decrementa (delta=-1) il contatore Venduti con
- * concorrenza ottimistica: rilegge l'ETag e ritenta sul 412. Se delta>0
- * verifica anche che ci sia disponibilità residua.
+ * Incrementa (delta>0, riserva) o decrementa (delta<0, rilascia) il contatore
+ * Venduti di `|delta|` pezzi con concorrenza ottimistica: rilegge l'ETag e
+ * ritenta sul 412. Se delta>0 verifica anche che ci sia disponibilità residua.
+ *
+ * Prodotti con taglie (vetrina Natale): aggiorna anche `VendutiTaglie` per la
+ * taglia indicata, nella stessa scrittura protetta da ETag, e tiene `Venduti`
+ * allineato alla somma. Se il bene ha le taglie la taglia è obbligatoria per
+ * riservare; in rilascio, senza taglia valida si scala solo il totale.
+ *
  * Ritorna il bene aggiornato oppure lancia se esaurito / esauriti i retry.
  */
-async function adjustVenduti(spItemId: string, delta: number): Promise<Bene> {
+async function adjustVenduti(spItemId: string, delta: number, taglia?: string): Promise<Bene> {
   const MAX_RETRY = 6
   for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
     const item = await graphGet<any>(`${beniBase()}/${spItemId}?${BENE_SELECT}`)
     const etag = item['@odata.etag'] as string | undefined
     const bene = mapBene(item)
-    if (delta > 0 && bene.available <= 0) {
-      throw new Error('Bene esaurito')
+    const fields: Record<string, unknown> = {}
+
+    const t = isTaglia(taglia) ? taglia : null
+    if (bene.taglie && t && bene.taglie[t] !== undefined) {
+      if (delta > 0 && (bene.disponibiliTaglie[t] ?? 0) < delta) {
+        throw new Error(
+          (bene.disponibiliTaglie[t] ?? 0) <= 0
+            ? `Taglia ${t} esaurita`
+            : `Taglia ${t}: disponibili solo ${bene.disponibiliTaglie[t]} pezzi`
+        )
+      }
+      const vt: ScortaTaglie = { ...bene.vendutiTaglie }
+      vt[t] = Math.max(0, (vt[t] ?? 0) + delta)
+      fields.VendutiTaglie = scriviTaglie(vt)
+      fields.Venduti = sommaTaglie(vt)
+    } else {
+      if (delta > 0 && bene.taglie) throw new Error('Scegli una taglia disponibile')
+      if (delta > 0 && bene.available < delta) {
+        throw new Error(
+          bene.available <= 0 ? 'Bene esaurito' : `Disponibili solo ${bene.available} pezzi`
+        )
+      }
+      fields.Venduti = Math.max(0, bene.venduti + delta)
     }
-    const nuovoVenduti = Math.max(0, bene.venduti + delta)
+
     const { status } = await graphPatchStatus(
       `${beniBase()}/${spItemId}/fields`,
-      { Venduti: nuovoVenduti },
+      fields,
       etag ? { 'If-Match': etag } : undefined
     )
     if (status === 412) continue // conflitto: qualcuno ha modificato → ritenta
-    return { ...bene, venduti: nuovoVenduti, available: Math.max(0, bene.quantity - nuovoVenduti) }
+    return (await getBeneBySpId(spItemId)) ?? bene
   }
   throw new Error('Troppi tentativi concorrenti: riprova tra un istante')
+}
+
+/** Rilascia i pezzi riservati da una prenotazione (tutti, della sua taglia). */
+async function rilasciaPezzi(beneSpItemId: string, pren: { pezzi?: number; taglia?: string }) {
+  return adjustVenduti(beneSpItemId, -Math.max(1, pren.pezzi ?? 1), pren.taglia || undefined)
 }
 
 // ============================================================
@@ -240,7 +337,7 @@ async function adjustVenduti(spItemId: string, delta: number): Promise<Bene> {
 // ============================================================
 
 const PREN_SELECT =
-  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,Consegnato,PdfUrl,SatispayPaymentId,SatispayStatus,PaypalOrderId)'
+  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,Consegnato,PdfUrl,SatispayPaymentId,SatispayStatus,PaypalOrderId,Taglia,Pezzi)'
 
 export async function getPrenotazioni(): Promise<Prenotazione[]> {
   const res = await graphGet<{ value: any[] }>(
@@ -260,7 +357,8 @@ export async function getPrenotazioneBySpId(spItemId: string): Promise<Prenotazi
 
 /**
  * Crea una prenotazione dopo aver validato importo e disponibilità e aver
- * riservato il pezzo (Venduti+1 con concorrenza ottimistica).
+ * riservato i pezzi (Venduti+N con concorrenza ottimistica; N>1 e taglia solo
+ * per la vetrina Natale).
  * In v1 il metodo attivo è "bonifico" (stato pending).
  */
 export async function creaPrenotazione(
@@ -273,19 +371,41 @@ export async function creaPrenotazione(
     return { error: 'Le donazioni di enti e aziende sono possibili solo dalla pagina Donazioni' }
   }
 
+  // Vetrina Natale: più pezzi dello stesso prodotto e taglia. Altrove sempre 1.
+  const natale = bene.sezione === 'NATALE'
+  const pezzi = natale ? Math.floor(Number(p.pezzi ?? 1)) : 1
+  if (!Number.isInteger(pezzi) || pezzi < 1 || pezzi > NATALE.maxPezzi) {
+    return { error: `Numero di pezzi non valido (da 1 a ${NATALE.maxPezzi})` }
+  }
+  let taglia: Taglia | '' = ''
+  if (bene.taglie) {
+    if (!isTaglia(p.taglia) || bene.taglie[p.taglia] === undefined) {
+      return { error: 'Scegli una taglia disponibile' }
+    }
+    taglia = p.taglia
+    if ((bene.disponibiliTaglie[taglia] ?? 0) < pezzi) {
+      const disp = bene.disponibiliTaglie[taglia] ?? 0
+      return { error: disp <= 0 ? `Taglia ${taglia} esaurita` : `Taglia ${taglia}: disponibili solo ${disp} pezzi` }
+    }
+  }
+
+  // La donazione minima (o fissa) vale per pezzo.
+  const minimo = Math.round(bene.price * pezzi * 100) / 100
   const importo = Number(p.importo)
   if (!importo || importo <= 0) return { error: 'Importo non valido' }
-  if (bene.flexibleAmount && importo < bene.price) {
-    return { error: `Importo minimo: € ${bene.price.toFixed(2)}` }
+  if (bene.flexibleAmount && importo < minimo - 0.001) {
+    return { error: `Importo minimo: € ${minimo.toFixed(2)}` }
   }
-  if (!bene.flexibleAmount && Math.abs(importo - bene.price) > 0.001) {
+  if (!bene.flexibleAmount && Math.abs(importo - minimo) > 0.001) {
     return { error: 'Importo non coerente con il bene selezionato' }
   }
-  if (bene.available <= 0) return { error: 'Bene esaurito' }
+  if (bene.available < pezzi) {
+    return { error: bene.available <= 0 ? 'Bene esaurito' : `Disponibili solo ${bene.available} pezzi` }
+  }
 
-  // Riserva il pezzo (può lanciare "Bene esaurito" in caso di corsa concorrente)
+  // Riserva i pezzi (può lanciare "esaurito" in caso di corsa concorrente)
   try {
-    await adjustVenduti(p.goodId, +1)
+    await adjustVenduti(p.goodId, +pezzi, taglia || undefined)
   } catch (e: any) {
     return { error: e?.message || 'Impossibile riservare il bene' }
   }
@@ -312,6 +432,9 @@ export async function creaPrenotazione(
       PresaVisioneInformativa: true,
       DataOraPresaVisione: adesso,
       VersioneInformativa: INFORMATIVA.versione,
+      // Colonne Natale scritte solo per i prodotti della vetrina: i beni
+      // classici restano identici a prima.
+      ...(natale ? { Taglia: taglia, Pezzi: pezzi } : {}),
     }
     const created = await graphPost<any>(prenBase(), { fields })
     const spItemId = String(created.id)
@@ -331,7 +454,7 @@ export async function creaPrenotazione(
     return { prenotazione: pren, serie: bene.canale }
   } catch (e: any) {
     // Rollback della riserva se la scrittura fallisce
-    await adjustVenduti(p.goodId, -1).catch(() => {})
+    await adjustVenduti(p.goodId, -pezzi, taglia || undefined).catch(() => {})
     return { error: e?.message || 'Errore nella creazione della prenotazione' }
   }
 }
@@ -492,7 +615,7 @@ export async function annullaERilascia(
       avviso = `Bene ${pren.goodId} non trovato: disponibilità NON ripristinata`
     } else {
       try {
-        await adjustVenduti(bene.spItemId, -1)
+        await rilasciaPezzi(bene.spItemId, pren)
         rilasciato = true
       } catch (err: any) {
         avviso = `Disponibilità di "${bene.name}" NON ripristinata: ${err?.message ?? err}`
@@ -541,7 +664,7 @@ export async function cambiaStato(
 
   if (nuovoStato === 'annullato' && eraAttiva) {
     const bene = await getBeneByLogicalId(pren.goodId)
-    if (bene) await adjustVenduti(bene.spItemId, -1).catch(() => {})
+    if (bene) await rilasciaPezzi(bene.spItemId, pren).catch(() => {})
   }
   return (await getPrenotazioneBySpId(spItemId))!
 }
@@ -607,7 +730,7 @@ export async function eliminaModuliNonPerfezionati(
   limite.setMonth(limite.getMonth() - mesi)
 
   const res = await graphGet<{ value: any[] }>(
-    `${prenBase()}?$expand=fields($select=Stato,Data,GoodId)&$top=2000`,
+    `${prenBase()}?$expand=fields($select=Stato,Data,GoodId,Taglia,Pezzi)&$top=2000`,
     PREFER_NON_INDEXED
   )
   const candidate = res.value.filter((item) => {
@@ -627,7 +750,11 @@ export async function eliminaModuliNonPerfezionati(
       const stato = String(f.Stato ?? '').trim().toLowerCase()
       if (normalizeStatus(stato) === 'pending' && f.GoodId) {
         const bene = await getBeneByLogicalId(String(f.GoodId))
-        if (bene) await adjustVenduti(bene.spItemId, -1).catch(() => {})
+        if (bene)
+          await rilasciaPezzi(bene.spItemId, {
+            pezzi: Math.max(1, Math.floor(Number(f.Pezzi ?? 1)) || 1),
+            taglia: String(f.Taglia ?? ''),
+          }).catch(() => {})
       }
       await graphDelete(`${prenBase()}/${item.id}`)
       eliminate++

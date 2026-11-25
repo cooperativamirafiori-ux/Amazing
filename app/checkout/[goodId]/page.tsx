@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getBeneBySpId } from '@/lib/lists'
 import { COOP } from '@/lib/config'
 import CheckoutForm from './CheckoutForm'
+import { NATALE } from '@/lib/natale'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,14 +19,20 @@ export default async function CheckoutPage({
   // I progetti della pagina donazioni hanno la loro intestazione: /dona.
   if (bene?.canale === 'MIR') redirect(`/dona?progetto=${encodeURIComponent(bene.spItemId)}`)
 
+  // Prodotti della vetrina Natale: palette natalizia e ritorno a /natale.
+  const natale = bene?.sezione === 'NATALE'
+  const ritorno = natale ? NATALE.percorso : '/'
+
   return (
-    <main className="min-h-screen">
+    <main className={`min-h-screen ${natale ? 'tema-natale bg-brand-bg' : ''}`}>
       <header className="bg-gradient-to-br from-brand-dark to-brand text-white">
         <div className="mx-auto max-w-3xl px-6 py-8">
-          <Link href="/" className="text-sm text-white/80 hover:text-white">
-            ← Torna al catalogo
+          <Link href={ritorno} className="text-sm text-white/80 hover:text-white">
+            {natale ? `← ${NATALE.ritornoLabel}` : '← Torna al catalogo'}
           </Link>
-          <h1 className="font-display mt-2 text-3xl font-bold">{COOP.progetto}</h1>
+          <h1 className="font-display mt-2 text-3xl font-bold">
+            {natale ? `🎄 ${NATALE.titolo}` : COOP.progetto}
+          </h1>
         </div>
       </header>
 
@@ -33,7 +40,7 @@ export default async function CheckoutPage({
         {!bene || bene.available <= 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-800">
             Questo bene non è più disponibile.{' '}
-            <Link href="/" className="font-bold underline">
+            <Link href={ritorno} className="font-bold underline">
               Vedi il catalogo
             </Link>
           </div>

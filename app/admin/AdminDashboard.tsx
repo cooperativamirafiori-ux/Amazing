@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import type { Bene, Prenotazione, StatoPagamento } from '@/types'
 import { isPersonaGiuridica } from '@/lib/donatore'
+import { TAGLIE, descriviBene, sommaTaglie, type ScortaTaglie, type Taglia } from '@/lib/natale'
 
 type Tab = 'catalogo' | 'prenotazioni' | 'admin'
 
@@ -105,8 +106,8 @@ function Prenotazioni() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [filtro, setFiltro] = useState<Filtro>('tutte')
   const [cerca, setCerca] = useState('')
-  /** Origine: tutte, solo Amazing (AMZ) o solo pagina /dona (MIR). */
-  const [origine, setOrigine] = useState<'tutte' | 'AMZ' | 'MIR'>('tutte')
+  /** Origine: tutte, solo Amazing (AMZ), solo vetrina Natale o solo pagina /dona (MIR). */
+  const [origine, setOrigine] = useState<'tutte' | 'AMZ' | 'NATALE' | 'MIR'>('tutte')
   const [emailCopiate, setEmailCopiate] = useState(0)
 
   function toggleSort(key: SortKey) {
@@ -131,9 +132,10 @@ function Prenotazioni() {
     const arr = rows.filter(
       (p) =>
         test(p) &&
-        (origine === 'tutte' || (p.serie ?? 'AMZ') === origine) &&
+        (origine === 'tutte' ||
+          (origine === 'NATALE' ? !!p.natale : (p.serie ?? 'AMZ') === origine)) &&
         (!q ||
-          `${p.nome} ${p.cognome} ${p.email} ${p.goodName} ${p.numeroRicevuta}`
+          `${p.nome} ${p.cognome} ${p.email} ${descriviBene(p)} ${p.numeroRicevuta}`
             .toLowerCase()
             .includes(q))
     )
@@ -296,12 +298,13 @@ function Prenotazioni() {
         ))}
         <select
           value={origine}
-          onChange={(e) => setOrigine(e.target.value as 'tutte' | 'AMZ' | 'MIR')}
+          onChange={(e) => setOrigine(e.target.value as 'tutte' | 'AMZ' | 'NATALE' | 'MIR')}
           title="Origine della donazione"
           className="rounded-lg border border-brand/20 bg-white px-3 py-1.5 text-sm outline-none focus:border-brand"
         >
           <option value="tutte">Tutte le origini</option>
           <option value="AMZ">Solo Amazing</option>
+          <option value="NATALE">Solo Natale 2026</option>
           <option value="MIR">Solo Donazioni Cooperativa</option>
         </select>
         <input
@@ -360,7 +363,8 @@ function Prenotazioni() {
                   <EmailRiga email={p.email} />
                   <p className="truncate text-xs text-brand-darker/60">
                     {p.serie === 'MIR' && <BadgeSerie serie="MIR" prima />}
-                    {p.goodName}
+                    {p.natale && <BadgeNatale prima />}
+                    {descriviBene(p)}
                   </p>
                 </div>
                 <p className="shrink-0 font-semibold text-brand">
@@ -453,7 +457,8 @@ function Prenotazioni() {
                 </td>
                 <td className="px-4 py-3">
                   {p.serie === 'MIR' && <BadgeSerie serie="MIR" prima />}
-                  {p.goodName}
+                  {p.natale && <BadgeNatale prima />}
+                  {descriviBene(p)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right font-semibold">
                   € {Number(p.importo).toFixed(2)}
@@ -567,6 +572,31 @@ function BadgeSerie({ serie, prima }: { serie: 'AMZ' | 'MIR'; prima?: boolean })
       } inline-block rounded-full bg-amber-100 px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-amber-800`}
     >
       Donazioni coop
+    </span>
+  )
+}
+
+/** Disponibili per taglia, es. "S 3 · M 0 · L 5". */
+function DispTaglie({ b }: { b: Bene }) {
+  return (
+    <div className="mt-1 whitespace-normal text-[11px] text-brand-darker/60">
+      {TAGLIE.filter((t) => b.taglie?.[t] !== undefined)
+        .map((t) => `${t} ${b.disponibiliTaglie[t] ?? 0}`)
+        .join(' · ')}
+    </div>
+  )
+}
+
+/** Prodotto della vetrina Natale 2026 (sezione NATALE, ricevute AMZ). */
+function BadgeNatale({ prima }: { prima?: boolean }) {
+  return (
+    <span
+      title="Prodotto della vetrina Natale 2026 (ricevute AMZ)"
+      className={`${
+        prima ? 'mr-1.5' : 'ml-2'
+      } inline-block rounded-full bg-red-100 px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-red-800`}
+    >
+      🎄 Natale
     </span>
   )
 }
@@ -762,9 +792,30 @@ const VUOTO = {
   flexibleAmount: false,
   /** AMZ = catalogo Amazing, MIR = progetto della pagina /dona. */
   canale: 'AMZ' as 'AMZ' | 'MIR',
+  /** Solo canale AMZ: AMAZING = catalogo `/`, NATALE = vetrina `/natale`. */
+  sezione: 'AMAZING' as 'AMAZING' | 'NATALE',
+  /** Vetrina Natale: il prodotto ha le taglie (scorta per taglia). */
+  conTaglie: false,
+  /** Scorta per taglia come testo del campo; vuoto = taglia non venduta. */
+  taglie: { S: '', M: '', L: '', XL: '' } as Record<Taglia, string>,
 }
 
 type FormBene = typeof VUOTO
+
+/** Valore del menu "Dove compare": unisce canale e sezione. */
+type Dove = 'AMZ' | 'NATALE' | 'MIR'
+const doveDi = (f: FormBene): Dove =>
+  f.canale === 'MIR' ? 'MIR' : f.sezione === 'NATALE' ? 'NATALE' : 'AMZ'
+
+/** Scorte per taglia compilate nel form (le taglie vuote non sono in vendita). */
+function taglieDaForm(f: FormBene): ScortaTaglie {
+  const out: ScortaTaglie = {}
+  for (const t of TAGLIE) {
+    const v = f.taglie[t].trim()
+    if (v !== '') out[t] = Number(v)
+  }
+  return out
+}
 
 function beneToForm(b: Bene): FormBene {
   return {
@@ -775,6 +826,11 @@ function beneToForm(b: Bene): FormBene {
     image: b.image,
     flexibleAmount: b.flexibleAmount,
     canale: b.canale ?? 'AMZ',
+    sezione: b.sezione ?? 'AMAZING',
+    conTaglie: !!b.taglie,
+    taglie: Object.fromEntries(
+      TAGLIE.map((t) => [t, b.taglie?.[t] !== undefined ? String(b.taglie[t]) : ''])
+    ) as Record<Taglia, string>,
   }
 }
 
@@ -821,7 +877,25 @@ function Catalogo() {
     setOk('')
 
     const price = Number(form.price)
-    const quantity = Number(form.quantity)
+    const natale = doveDi(form) === 'NATALE'
+    const conTaglie = natale && form.conTaglie
+    const taglie = taglieDaForm(form)
+    if (conTaglie) {
+      if (!Object.keys(taglie).length) return setMsg('Indica la scorta di almeno una taglia.')
+      for (const t of TAGLIE) {
+        const n = taglie[t]
+        if (n === undefined) {
+          if ((editing?.vendutiTaglie[t] ?? 0) > 0)
+            return setMsg(`Taglia ${t}: ci sono già pezzi prenotati, non si può togliere.`)
+          continue
+        }
+        if (!Number.isInteger(n) || n < 0) return setMsg(`Taglia ${t}: scorta non valida.`)
+        const gia = editing?.vendutiTaglie[t] ?? 0
+        if (n < gia) return setMsg(`Taglia ${t}: ci sono già ${gia} pezzi prenotati o venduti.`)
+      }
+    }
+    // Con le taglie la quantità totale è la somma delle scorte.
+    const quantity = conTaglie ? sommaTaglie(taglie) : Number(form.quantity)
     if (!form.name.trim()) return setMsg('Il nome è obbligatorio.')
     if (!Number.isFinite(price) || price < 0) return setMsg('Prezzo non valido.')
     if (!Number.isInteger(quantity) || quantity < 0) return setMsg('Quantità non valida.')
@@ -839,6 +913,12 @@ function Catalogo() {
       image: form.image.trim(),
       flexibleAmount: form.flexibleAmount,
       canale: form.canale,
+      // Colonne Natale inviate solo quando servono: i beni classici restano
+      // identici a prima (vedi campiNatale in lib/lists.ts).
+      ...(natale || editing?.sezione === 'NATALE'
+        ? { sezione: natale ? 'NATALE' : 'AMAZING' }
+        : {}),
+      ...(conTaglie ? { taglie } : editing?.taglie ? { taglie: null } : {}),
     }
 
     setSaving(true)
@@ -895,9 +975,11 @@ function Catalogo() {
         <label className="mt-3 block text-sm">
           <span className="mb-1 block font-semibold text-brand-darker">Dove compare</span>
           <select
-            value={form.canale}
+            value={doveDi(form)}
             onChange={(e) => {
-              const canale = e.target.value as 'AMZ' | 'MIR'
+              const dove = e.target.value as Dove
+              const canale = dove === 'MIR' ? 'MIR' : 'AMZ'
+              const sezione = dove === 'NATALE' ? 'NATALE' : 'AMAZING'
               // Un progetto della pagina donazioni è sempre a importo libero e
               // non si esaurisce: si precompilano i campi, restano modificabili.
               setForm(
@@ -905,18 +987,27 @@ function Catalogo() {
                   ? {
                       ...form,
                       canale,
+                      sezione,
+                      conTaglie: false,
                       flexibleAmount: true,
                       quantity: form.quantity || '1000000',
                       price: form.price || '1',
                     }
-                  : { ...form, canale }
+                  : { ...form, canale, sezione, conTaglie: sezione === 'NATALE' && form.conTaglie }
               )
             }}
             className="w-full rounded-lg border border-brand/20 bg-white px-3 py-2 outline-none focus:border-brand"
           >
             <option value="AMZ">Catalogo Amazing</option>
+            <option value="NATALE">🎄 Natale 2026 (/natale) — ricevute AMZ</option>
             <option value="MIR">Pagina Donazioni Cooperativa (/dona) — ricevute MIR</option>
           </select>
+          {doveDi(form) === 'NATALE' && (
+            <span className="mt-1 block text-xs text-brand-darker/60">
+              Compare nella vetrina di Natale (banner in home). Il donatore sceglie quanti pezzi; il
+              prezzo è a pezzo.
+            </span>
+          )}
           {form.canale === 'MIR' && (
             <span className="mt-1 block text-xs text-brand-darker/60">
               Compare come pulsante su /dona. Il nome è il progetto a cui la persona sceglie di
@@ -934,14 +1025,58 @@ function Catalogo() {
           step="0.01"
           min="0"
         />
-        <Inp
-          label="Quantità"
-          value={form.quantity}
-          onChange={(v) => setForm({ ...form, quantity: v })}
-          type="number"
-          step="1"
-          min={editing ? String(editing.venduti) : '0'}
-        />
+        {doveDi(form) === 'NATALE' && (
+          <label className="mt-3 flex items-center gap-2 text-sm text-brand-darker/80">
+            <input
+              type="checkbox"
+              checked={form.conTaglie}
+              onChange={(e) => setForm({ ...form, conTaglie: e.target.checked })}
+            />
+            Il prodotto ha le taglie (S, M, L, XL)
+          </label>
+        )}
+        {doveDi(form) === 'NATALE' && form.conTaglie ? (
+          <div className="mt-3 text-sm">
+            <span className="mb-1 block font-semibold text-brand-darker">Scorta per taglia</span>
+            <div className="grid grid-cols-4 gap-2">
+              {TAGLIE.map((t) => (
+                <label key={t} className="block">
+                  <span className="mb-0.5 block text-center text-xs font-bold text-brand-darker/70">
+                    {t}
+                  </span>
+                  <input
+                    type="number"
+                    min={String(editing?.vendutiTaglie[t] ?? 0)}
+                    step="1"
+                    value={form.taglie[t]}
+                    placeholder="—"
+                    onChange={(e) =>
+                      setForm({ ...form, taglie: { ...form.taglie, [t]: e.target.value } })
+                    }
+                    className="w-full rounded-lg border border-brand/20 px-2 py-2 text-center outline-none focus:border-brand"
+                  />
+                  {(editing?.vendutiTaglie[t] ?? 0) > 0 && (
+                    <span className="mt-0.5 block text-center text-[10px] text-brand-darker/50">
+                      {editing!.vendutiTaglie[t]} presi
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+            <span className="mt-1 block text-xs text-brand-darker/60">
+              Lascia vuota una taglia che non vendi. Totale: {sommaTaglie(taglieDaForm(form))} pezzi.
+            </span>
+          </div>
+        ) : (
+          <Inp
+            label="Quantità"
+            value={form.quantity}
+            onChange={(v) => setForm({ ...form, quantity: v })}
+            type="number"
+            step="1"
+            min={editing ? String(editing.venduti) : '0'}
+          />
+        )}
         <Inp label="URL immagine" value={form.image} onChange={(v) => setForm({ ...form, image: v })} />
         {form.image && (
           /* eslint-disable-next-line @next/next/no-img-element */
@@ -1007,6 +1142,7 @@ function Catalogo() {
                       <span className="ml-2 text-xs font-normal text-brand/60">(libero)</span>
                     )}
                     {b.canale === 'MIR' && <BadgeSerie serie="MIR" />}
+                    {b.sezione === 'NATALE' && <BadgeNatale />}
                   </p>
                   {b.description && (
                     <p className="mt-0.5 text-xs text-brand-darker/50">{b.description}</p>
@@ -1017,6 +1153,7 @@ function Catalogo() {
                       Disponibili {b.available} di {b.quantity}
                     </span>
                   </div>
+                  {b.taglie && <DispTaglie b={b} />}
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <ActionBtn className="w-full" onClick={() => apriModifica(b)}>
                       Modifica
@@ -1043,7 +1180,7 @@ function Catalogo() {
                 <tr>
                   <th className="px-4 py-3">Nome</th>
                   <th className="w-24 px-4 py-3 text-right">Prezzo</th>
-                  <th className="w-20 px-4 py-3 text-right">Disp.</th>
+                  <th className="w-28 px-4 py-3 text-right">Disp.</th>
                   <th className="w-56 px-4 py-3"></th>
                 </tr>
               </thead>
@@ -1062,6 +1199,7 @@ function Catalogo() {
                           <span className="ml-2 text-xs font-normal text-brand/60">(libero)</span>
                         )}
                         {b.canale === 'MIR' && <BadgeSerie serie="MIR" />}
+                        {b.sezione === 'NATALE' && <BadgeNatale />}
                       </div>
                       {b.description && (
                         <div
@@ -1077,6 +1215,7 @@ function Catalogo() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       {b.available}/{b.quantity}
+                      {b.taglie && <DispTaglie b={b} />}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex flex-nowrap justify-end gap-1.5">
