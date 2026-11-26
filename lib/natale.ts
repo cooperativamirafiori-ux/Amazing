@@ -35,6 +35,12 @@ export const NATALE = {
   sottotitolo: 'Regala i prodotti realizzati dalla Cooperativa Mirafiori',
   percorso: '/natale',
   ritornoLabel: 'Torna ai regali di Natale',
+  /**
+   * Banner in home verso /natale. Spento finché il catalogo non è completo
+   * (2026-11-26): la pagina /natale resta raggiungibile con il link diretto.
+   * Rimettere a true per pubblicarlo.
+   */
+  bannerAttivo: false,
   /** Massimo pezzi per singolo ordine (oltre si fanno più ordini). */
   maxPezzi: 20,
 }

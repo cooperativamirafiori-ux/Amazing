@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function ShopPage() {
   let beni: Bene[] = []
-  // Il banner Natale compare solo se c'è almeno un prodotto in vetrina.
+  // Il banner Natale compare solo se è attivo (NATALE.bannerAttivo) e c'è
+  // almeno un prodotto in vetrina.
   let natale = 0
   let errore = ''
   try {
@@ -47,7 +48,7 @@ export default async function ShopPage() {
         </div>
       </header>
 
-      {natale > 0 && <BannerNatale />}
+      {NATALE.bannerAttivo && natale > 0 && <BannerNatale />}
 
       <section className="mx-auto max-w-6xl px-6 py-10">
         {errore ? (
