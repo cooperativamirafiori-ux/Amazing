@@ -12,11 +12,13 @@
  *                 Immagine, ImportoLibero(yes/no), IdLogico,
  *                 Canale (testo: vuoto = Amazing, "MIR" = pagina /dona),
  *                 Sezione (testo: vuoto = catalogo, "NATALE" = pagina /natale),
- *                 Taglie, VendutiTaglie (testo JSON, scorta per taglia)
+ *                 Taglie, VendutiTaglie (testo JSON, scorta per taglia),
+ *                 Varianti, VendutiVarianti (testo JSON, spille: scorta per soggetto|misura)
  *   Prenotazioni: Title(id logico), NumeroRicevuta, GoodId, GoodName, Nome,
  *                 Cognome, Indirizzo, CodiceFiscale, Email, Importo, Data,
  *                 Metodo, Stato, Consegnato(yes/no), PdfUrl,
  *                 Taglia (testo), Pezzi (numero, vuoto = 1),
+ *                 Righe (testo JSON, righe degli ordini di spille),
  *                 PresaVisioneInformativa(yes/no), DataOraPresaVisione(data/ora),
  *                 VersioneInformativa (testo, es. "INF08 v1.0")
  *
@@ -47,6 +49,18 @@ import {
   type ScortaTaglie,
   type Taglia,
 } from '@/lib/natale'
+import {
+  leggiVarianti,
+  scriviVarianti,
+  sommaVarianti,
+  leggiRighe,
+  componiRighe,
+  totaleRighe,
+  infoVariante,
+  SPILLE,
+  type ScortaVarianti,
+  type RigaRichiesta,
+} from '@/lib/spille'
 
 const SITE = () => process.env.SHAREPOINT_SITE_ID!
 const BENI = () => process.env.SP_LIST_BENI!
@@ -70,10 +84,27 @@ function mapBene(item: any): Bene {
   const canale = normalizzaSerie(f.Canale)
   const taglie = leggiTaglie(f.Taglie)
   const vendutiTaglie = leggiTaglie(f.VendutiTaglie) ?? {}
-  // Con le taglie la scorta e i venduti "veri" sono quelli per taglia;
+  // Spille: scorta per soggetto|misura. Le taglie hanno la precedenza (un
+  // bene non ha mai entrambe).
+  const varianti = taglie ? null : leggiVarianti(f.Varianti)
+  const vendutiVarianti = leggiVarianti(f.VendutiVarianti) ?? {}
+  // Con taglie o varianti la scorta e i venduti "veri" sono quelli di dettaglio;
   // Quantita/Venduti sono tenuti allineati alle somme (vedi adjustVenduti).
-  const quantity = taglie ? sommaTaglie(taglie) : Number(f.Quantita ?? 0)
-  const venduti = taglie ? sommaTaglie(vendutiTaglie) : Number(f.Venduti ?? 0)
+  const quantity = taglie
+    ? sommaTaglie(taglie)
+    : varianti
+    ? sommaVarianti(varianti)
+    : Number(f.Quantita ?? 0)
+  const venduti = taglie
+    ? sommaTaglie(vendutiTaglie)
+    : varianti
+    ? sommaVarianti(vendutiVarianti)
+    : Number(f.Venduti ?? 0)
+  const disponibiliVarianti: ScortaVarianti = {}
+  if (varianti) {
+    for (const [k, n] of Object.entries(varianti))
+      disponibiliVarianti[k] = Math.max(0, n - (vendutiVarianti[k] ?? 0))
+  }
   const disponibiliTaglie: ScortaTaglie = {}
   if (taglie) {
     for (const t of TAGLIE) {
@@ -96,6 +127,9 @@ function mapBene(item: any): Bene {
     taglie,
     vendutiTaglie,
     disponibiliTaglie,
+    varianti,
+    vendutiVarianti,
+    disponibiliVarianti,
     available: Math.max(0, quantity - venduti),
   }
 }
@@ -124,6 +158,7 @@ function mapPrenotazione(item: any): Prenotazione {
     paypalOrderId: String(f.PaypalOrderId ?? ''),
     taglia: String(f.Taglia ?? ''),
     pezzi: Math.max(1, Math.floor(Number(f.Pezzi ?? 1)) || 1),
+    righe: leggiRighe(f.Righe),
   }
 }
 
@@ -156,7 +191,7 @@ function normalizeConsegnato(f: Record<string, unknown>): boolean {
 // ============================================================
 
 const BENE_SELECT =
-  '$expand=fields($select=Title,Descrizione,Prezzo,Quantita,Venduti,Immagine,ImportoLibero,IdLogico,Canale,Sezione,Taglie,VendutiTaglie)'
+  '$expand=fields($select=Title,Descrizione,Prezzo,Quantita,Venduti,Immagine,ImportoLibero,IdLogico,Canale,Sezione,Taglie,VendutiTaglie,Varianti,VendutiVarianti)'
 
 /**
  * Ordine di visualizzazione del catalogo:
@@ -266,6 +301,11 @@ function campiNatale(b: Partial<Bene>): Record<string, unknown> {
     out.Taglie = scriviTaglie(taglie)
     if (taglie) out.Quantita = sommaTaglie(taglie)
   }
+  if (b.varianti !== undefined) {
+    const varianti = leggiVarianti(b.varianti)
+    out.Varianti = scriviVarianti(varianti)
+    if (varianti) out.Quantita = sommaVarianti(varianti)
+  }
   return out
 }
 
@@ -327,8 +367,55 @@ async function adjustVenduti(spItemId: string, delta: number, taglia?: string): 
   throw new Error('Troppi tentativi concorrenti: riprova tra un istante')
 }
 
-/** Rilascia i pezzi riservati da una prenotazione (tutti, della sua taglia). */
-async function rilasciaPezzi(beneSpItemId: string, pren: { pezzi?: number; taglia?: string }) {
+/**
+ * Beni a varianti (spille): riserva (segno +1) o rilascia (segno −1) i pezzi di
+ * tutte le righe in UNA sola scrittura protetta da ETag. In riserva o passano
+ * tutte le righe o nessuna: se anche una sola variante non basta, non si
+ * scrive niente. Tiene `Venduti` allineato alla somma.
+ */
+async function adjustVarianti(
+  spItemId: string,
+  righe: RigaRichiesta[],
+  segno: 1 | -1
+): Promise<Bene> {
+  const MAX_RETRY = 6
+  for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
+    const item = await graphGet<any>(`${beniBase()}/${spItemId}?${BENE_SELECT}`)
+    const etag = item['@odata.etag'] as string | undefined
+    const bene = mapBene(item)
+    if (!bene.varianti) throw new Error('Il prodotto non ha varianti')
+
+    const vv: ScortaVarianti = { ...bene.vendutiVarianti }
+    for (const r of righe) {
+      if (segno > 0) {
+        if (bene.varianti[r.chiave] === undefined) throw new Error('Spilla non disponibile')
+        const disp = bene.disponibiliVarianti[r.chiave] ?? 0
+        if (disp < r.pezzi) {
+          const info = infoVariante(r.chiave)
+          const nome = info ? `${info.soggetto.nome} ${info.misura.nome.toLowerCase()}` : r.chiave
+          throw new Error(disp <= 0 ? `${nome}: esaurita` : `${nome}: disponibili solo ${disp}`)
+        }
+      }
+      vv[r.chiave] = Math.max(0, (vv[r.chiave] ?? 0) + segno * r.pezzi)
+    }
+
+    const { status } = await graphPatchStatus(
+      `${beniBase()}/${spItemId}/fields`,
+      { VendutiVarianti: scriviVarianti(vv), Venduti: sommaVarianti(vv) },
+      etag ? { 'If-Match': etag } : undefined
+    )
+    if (status === 412) continue
+    return (await getBeneBySpId(spItemId)) ?? bene
+  }
+  throw new Error('Troppi tentativi concorrenti: riprova tra un istante')
+}
+
+/** Rilascia i pezzi riservati da una prenotazione (tutti, della sua taglia o delle sue righe). */
+async function rilasciaPezzi(
+  beneSpItemId: string,
+  pren: { pezzi?: number; taglia?: string; righe?: RigaRichiesta[] }
+) {
+  if (pren.righe?.length) return adjustVarianti(beneSpItemId, pren.righe, -1)
   return adjustVenduti(beneSpItemId, -Math.max(1, pren.pezzi ?? 1), pren.taglia || undefined)
 }
 
@@ -337,7 +424,7 @@ async function rilasciaPezzi(beneSpItemId: string, pren: { pezzi?: number; tagli
 // ============================================================
 
 const PREN_SELECT =
-  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,Consegnato,PdfUrl,SatispayPaymentId,SatispayStatus,PaypalOrderId,Taglia,Pezzi)'
+  '$expand=fields($select=Title,NumeroRicevuta,GoodId,GoodName,Nome,Cognome,Indirizzo,CodiceFiscale,Email,Importo,Data,Metodo,Stato,Consegnato,PdfUrl,SatispayPaymentId,SatispayStatus,PaypalOrderId,Taglia,Pezzi,Righe)'
 
 export async function getPrenotazioni(): Promise<Prenotazione[]> {
   const res = await graphGet<{ value: any[] }>(
@@ -373,9 +460,30 @@ export async function creaPrenotazione(
 
   // Vetrina Natale: più pezzi dello stesso prodotto e taglia. Altrove sempre 1.
   const natale = bene.sezione === 'NATALE'
-  const pezzi = natale ? Math.floor(Number(p.pezzi ?? 1)) : 1
-  if (!Number.isInteger(pezzi) || pezzi < 1 || pezzi > NATALE.maxPezzi) {
-    return { error: `Numero di pezzi non valido (da 1 a ${NATALE.maxPezzi})` }
+
+  // Spille (bene a varianti): l'ordine è fatto di righe soggetto|misura.
+  const richiesta: RigaRichiesta[] = bene.varianti ? p.righe ?? [] : []
+  if (bene.varianti) {
+    if (!richiesta.length) return { error: 'Scegli almeno una spilla' }
+    for (const r of richiesta) {
+      if (bene.varianti[r.chiave] === undefined) return { error: 'Spilla non disponibile' }
+      const disp = bene.disponibiliVarianti[r.chiave] ?? 0
+      if (disp < r.pezzi) {
+        const info = infoVariante(r.chiave)!
+        const nome = `${info.soggetto.nome} ${info.misura.nome.toLowerCase()}`
+        return { error: disp <= 0 ? `${nome}: esaurita` : `${nome}: disponibili solo ${disp}` }
+      }
+    }
+  }
+  const righe = componiRighe(richiesta)
+  const maxPezzi = bene.varianti ? SPILLE.maxPezzi : NATALE.maxPezzi
+  const pezzi = bene.varianti
+    ? richiesta.reduce((s, r) => s + r.pezzi, 0)
+    : natale
+    ? Math.floor(Number(p.pezzi ?? 1))
+    : 1
+  if (!Number.isInteger(pezzi) || pezzi < 1 || pezzi > maxPezzi) {
+    return { error: `Numero di pezzi non valido (da 1 a ${maxPezzi})` }
   }
   let taglia: Taglia | '' = ''
   if (bene.taglie) {
@@ -389,8 +497,9 @@ export async function creaPrenotazione(
     }
   }
 
-  // La donazione minima (o fissa) vale per pezzo.
-  const minimo = Math.round(bene.price * pezzi * 100) / 100
+  // La donazione minima (o fissa) vale per pezzo; per le spille dipende
+  // dalla misura di ogni riga.
+  const minimo = bene.varianti ? totaleRighe(righe) : Math.round(bene.price * pezzi * 100) / 100
   const importo = Number(p.importo)
   if (!importo || importo <= 0) return { error: 'Importo non valido' }
   if (bene.flexibleAmount && importo < minimo - 0.001) {
@@ -405,7 +514,8 @@ export async function creaPrenotazione(
 
   // Riserva i pezzi (può lanciare "esaurito" in caso di corsa concorrente)
   try {
-    await adjustVenduti(p.goodId, +pezzi, taglia || undefined)
+    if (bene.varianti) await adjustVarianti(p.goodId, richiesta, +1)
+    else await adjustVenduti(p.goodId, +pezzi, taglia || undefined)
   } catch (e: any) {
     return { error: e?.message || 'Impossibile riservare il bene' }
   }
@@ -435,6 +545,7 @@ export async function creaPrenotazione(
       // Colonne Natale scritte solo per i prodotti della vetrina: i beni
       // classici restano identici a prima.
       ...(natale ? { Taglia: taglia, Pezzi: pezzi } : {}),
+      ...(righe.length ? { Righe: JSON.stringify(righe) } : {}),
     }
     const created = await graphPost<any>(prenBase(), { fields })
     const spItemId = String(created.id)
@@ -454,7 +565,7 @@ export async function creaPrenotazione(
     return { prenotazione: pren, serie: bene.canale }
   } catch (e: any) {
     // Rollback della riserva se la scrittura fallisce
-    await adjustVenduti(p.goodId, -pezzi, taglia || undefined).catch(() => {})
+    await rilasciaPezzi(p.goodId, { pezzi, taglia, righe: richiesta }).catch(() => {})
     return { error: e?.message || 'Errore nella creazione della prenotazione' }
   }
 }
@@ -730,7 +841,7 @@ export async function eliminaModuliNonPerfezionati(
   limite.setMonth(limite.getMonth() - mesi)
 
   const res = await graphGet<{ value: any[] }>(
-    `${prenBase()}?$expand=fields($select=Stato,Data,GoodId,Taglia,Pezzi)&$top=2000`,
+    `${prenBase()}?$expand=fields($select=Stato,Data,GoodId,Taglia,Pezzi,Righe)&$top=2000`,
     PREFER_NON_INDEXED
   )
   const candidate = res.value.filter((item) => {
@@ -754,6 +865,7 @@ export async function eliminaModuliNonPerfezionati(
           await rilasciaPezzi(bene.spItemId, {
             pezzi: Math.max(1, Math.floor(Number(f.Pezzi ?? 1)) || 1),
             taglia: String(f.Taglia ?? ''),
+            righe: leggiRighe(f.Righe),
           }).catch(() => {})
       }
       await graphDelete(`${prenBase()}/${item.id}`)

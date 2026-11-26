@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import type { Bene } from '@/types'
 import { TAGLIE } from '@/lib/natale'
+import { MISURE_SPILLE, SOGGETTI_SPILLE } from '@/lib/spille'
 
 export default function ShopGrid({
   beni,
@@ -47,6 +48,13 @@ export default function ShopGrid({
               <h3 className="font-display text-lg font-bold text-brand-darker">{b.name}</h3>
               <p className="mt-1 flex-1 text-sm text-brand-darker/70">{b.description}</p>
 
+              {b.varianti && (
+                <p className="mt-3 text-xs font-semibold text-brand-darker/70">
+                  {SOGGETTI_SPILLE.length} soggetti ·{' '}
+                  {MISURE_SPILLE.map((m) => m.nome.toLowerCase()).join(', ')} · scegli quante vuoi
+                </p>
+              )}
+
               {b.taglie && (
                 <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Taglie">
                   {TAGLIE.filter((t) => b.taglie![t] !== undefined).map((t) => {
@@ -71,10 +79,20 @@ export default function ShopGrid({
               <div className="mt-4 flex items-end justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-brand/60">
-                    {b.flexibleAmount ? 'Donazione minima' : 'Donazione'}
-                    {natale && ' a pezzo'}
+                    {b.varianti
+                      ? 'Donazione a spilla da'
+                      : b.flexibleAmount
+                      ? 'Donazione minima'
+                      : 'Donazione'}
+                    {natale && !b.varianti && ' a pezzo'}
                   </p>
-                  <p className="text-2xl font-bold text-brand">€ {b.price.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-brand">
+                    €{' '}
+                    {(b.varianti
+                      ? Math.min(...MISURE_SPILLE.map((m) => m.prezzo))
+                      : b.price
+                    ).toFixed(2)}
+                  </p>
                 </div>
                 <Link
                   href={`/checkout/${b.spItemId}`}

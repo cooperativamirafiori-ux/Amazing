@@ -3,6 +3,7 @@ import { guardAdmin } from '@/lib/api-guard'
 import { updateBene, deleteBene, getBeneBySpId } from '@/lib/lists'
 import type { Bene } from '@/types'
 import { leggiTaglie, TAGLIE } from '@/lib/natale'
+import { leggiVarianti } from '@/lib/spille'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -67,6 +68,27 @@ export async function PATCH(
       patch.taglie = taglie
     }
 
+    // Spille: scorta per soggetto|misura. Si modifica solo su un bene che ha
+    // già le varianti (lo crea scripts/crea-spille-natale.mjs).
+    if (body.varianti !== undefined && body.varianti !== null) {
+      if (!attuale.varianti) {
+        return NextResponse.json({ error: 'Questo prodotto non ha varianti' }, { status: 400 })
+      }
+      const varianti = leggiVarianti(body.varianti)
+      if (!varianti) {
+        return NextResponse.json({ error: 'Indica la scorta di almeno una spilla' }, { status: 400 })
+      }
+      for (const [k, gia] of Object.entries(attuale.vendutiVarianti)) {
+        if (gia > 0 && (varianti[k] ?? 0) < gia) {
+          return NextResponse.json(
+            { error: `${k}: scorta troppo bassa, ci sono già ${gia} spille prenotate o vendute.` },
+            { status: 400 }
+          )
+        }
+      }
+      patch.varianti = varianti
+    }
+
     if (body.price !== undefined) {
       const price = Number(body.price)
       if (!Number.isFinite(price) || price < 0) {
@@ -76,7 +98,8 @@ export async function PATCH(
     }
 
     // Con le taglie la quantità è la somma delle scorte: la calcola updateBene.
-    if (body.quantity !== undefined && !patch.taglie) {
+    // Idem per le spille: la quantità è la somma delle scorte per variante.
+    if (body.quantity !== undefined && !patch.taglie && !attuale.varianti) {
       const quantity = Number(body.quantity)
       if (!Number.isInteger(quantity) || quantity < 0) {
         return NextResponse.json({ error: 'Quantità non valida' }, { status: 400 })

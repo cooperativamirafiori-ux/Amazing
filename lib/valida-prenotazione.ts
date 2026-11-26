@@ -2,6 +2,7 @@
 import type { NuovaPrenotazione, MetodoPagamento } from '@/types'
 import { codiceValido, normalizzaCodice, type TipoDonatore } from '@/lib/donatore'
 import { isTaglia, NATALE } from '@/lib/natale'
+import { normalizzaRighe, SPILLE, type RigaRichiesta } from '@/lib/spille'
 
 export function validaPrenotazione(
   body: any,
@@ -38,6 +39,15 @@ export function validaPrenotazione(
   }
   const taglia = body?.taglia ? String(body.taglia).trim().toUpperCase() : ''
   if (taglia && !isTaglia(taglia)) return { ok: false, error: 'Taglia non valida' }
+  // Spille: righe soggetto|misura. Scorte e importo li controlla creaPrenotazione.
+  let righe: RigaRichiesta[] | undefined
+  if (body?.righe !== undefined && body?.righe !== null) {
+    const r = normalizzaRighe(body.righe)
+    if (!r) return { ok: false, error: 'Selezione delle spille non valida' }
+    if (r.reduce((t, x) => t + x.pezzi, 0) > SPILLE.maxPezzi)
+      return { ok: false, error: `Massimo ${SPILLE.maxPezzi} spille per ordine` }
+    righe = r
+  }
 
   // Presa visione dell'informativa privacy: obbligatoria (vedi CheckoutForm).
   if (body?.presaVisione !== true) {
@@ -58,6 +68,7 @@ export function validaPrenotazione(
       tipoDonatore: tipo,
       pezzi,
       ...(isTaglia(taglia) ? { taglia } : {}),
+      ...(righe ? { righe } : {}),
     },
   }
 }

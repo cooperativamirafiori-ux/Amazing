@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import type { Bene, Prenotazione, StatoPagamento } from '@/types'
 import { isPersonaGiuridica } from '@/lib/donatore'
 import { TAGLIE, descriviBene, sommaTaglie, type ScortaTaglie, type Taglia } from '@/lib/natale'
+import {
+  MISURE_SPILLE,
+  SOGGETTI_SPILLE,
+  chiaveVariante,
+  type ScortaVarianti,
+} from '@/lib/spille'
 
 type Tab = 'catalogo' | 'prenotazioni' | 'admin'
 
@@ -587,6 +593,23 @@ function DispTaglie({ b }: { b: Bene }) {
   )
 }
 
+/** Spille: quante varianti in vendita e quali sono esaurite. */
+function DispVarianti({ b }: { b: Bene }) {
+  const chiavi = Object.keys(b.varianti ?? {})
+  const esaurite = SOGGETTI_SPILLE.flatMap((sg) =>
+    MISURE_SPILLE.filter((m) => {
+      const k = chiaveVariante(sg.codice, m.codice)
+      return b.varianti?.[k] !== undefined && (b.disponibiliVarianti[k] ?? 0) <= 0
+    }).map((m) => `${sg.nome} ${m.codice}`)
+  )
+  return (
+    <div className="mt-1 whitespace-normal text-[11px] text-brand-darker/60">
+      {chiavi.length} varianti ·{' '}
+      {esaurite.length ? `esaurite: ${esaurite.join(', ')}` : 'nessuna esaurita'}
+    </div>
+  )
+}
+
 /** Prodotto della vetrina Natale 2026 (sezione NATALE, ricevute AMZ). */
 function BadgeNatale({ prima }: { prima?: boolean }) {
   return (
@@ -798,6 +821,11 @@ const VUOTO = {
   conTaglie: false,
   /** Scorta per taglia come testo del campo; vuoto = taglia non venduta. */
   taglie: { S: '', M: '', L: '', XL: '' } as Record<Taglia, string>,
+  /**
+   * Spille (bene a varianti): scorta per soggetto|misura come testo del campo.
+   * Vuoto = bene senza varianti. Si crea con scripts/crea-spille-natale.mjs.
+   */
+  varianti: {} as Record<string, string>,
 }
 
 type FormBene = typeof VUOTO
@@ -817,6 +845,13 @@ function taglieDaForm(f: FormBene): ScortaTaglie {
   return out
 }
 
+/** Scorte per variante compilate nel form (i campi vuoti non sono in vendita). */
+function variantiDaForm(f: FormBene): ScortaVarianti {
+  const out: ScortaVarianti = {}
+  for (const [k, v] of Object.entries(f.varianti)) if (v.trim() !== '') out[k] = Number(v)
+  return out
+}
+
 function beneToForm(b: Bene): FormBene {
   return {
     name: b.name,
@@ -831,6 +866,16 @@ function beneToForm(b: Bene): FormBene {
     taglie: Object.fromEntries(
       TAGLIE.map((t) => [t, b.taglie?.[t] !== undefined ? String(b.taglie[t]) : ''])
     ) as Record<Taglia, string>,
+    varianti: b.varianti
+      ? Object.fromEntries(
+          SOGGETTI_SPILLE.flatMap((s) =>
+            MISURE_SPILLE.map((m) => {
+              const k = chiaveVariante(s.codice, m.codice)
+              return [k, b.varianti![k] !== undefined ? String(b.varianti![k]) : '']
+            })
+          )
+        )
+      : {},
   }
 }
 
@@ -878,7 +923,21 @@ function Catalogo() {
 
     const price = Number(form.price)
     const natale = doveDi(form) === 'NATALE'
-    const conTaglie = natale && form.conTaglie
+    // Spille: le scorte sono per soggetto|misura (niente taglie né quantità).
+    const aVarianti = Object.keys(form.varianti).length > 0
+    const varianti = variantiDaForm(form)
+    if (aVarianti) {
+      if (!Object.keys(varianti).length) return setMsg('Indica la scorta di almeno una spilla.')
+      for (const [k, n] of Object.entries(varianti)) {
+        const gia = editing?.vendutiVarianti[k] ?? 0
+        if (!Number.isInteger(n) || n < 0) return setMsg(`Scorta non valida (${k}).`)
+        if (n < gia) return setMsg(`${k}: ci sono già ${gia} spille prenotate o vendute.`)
+      }
+      for (const [k, gia] of Object.entries(editing?.vendutiVarianti ?? {}))
+        if (gia > 0 && varianti[k] === undefined)
+          return setMsg(`${k}: ci sono già spille prenotate, non si può togliere.`)
+    }
+    const conTaglie = natale && form.conTaglie && !aVarianti
     const taglie = taglieDaForm(form)
     if (conTaglie) {
       if (!Object.keys(taglie).length) return setMsg('Indica la scorta di almeno una taglia.')
@@ -895,7 +954,11 @@ function Catalogo() {
       }
     }
     // Con le taglie la quantità totale è la somma delle scorte.
-    const quantity = conTaglie ? sommaTaglie(taglie) : Number(form.quantity)
+    const quantity = aVarianti
+      ? Object.values(varianti).reduce((t, n) => t + n, 0)
+      : conTaglie
+      ? sommaTaglie(taglie)
+      : Number(form.quantity)
     if (!form.name.trim()) return setMsg('Il nome è obbligatorio.')
     if (!Number.isFinite(price) || price < 0) return setMsg('Prezzo non valido.')
     if (!Number.isInteger(quantity) || quantity < 0) return setMsg('Quantità non valida.')
@@ -919,6 +982,7 @@ function Catalogo() {
         ? { sezione: natale ? 'NATALE' : 'AMAZING' }
         : {}),
       ...(conTaglie ? { taglie } : editing?.taglie ? { taglie: null } : {}),
+      ...(aVarianti ? { varianti } : {}),
     }
 
     setSaving(true)
@@ -1025,7 +1089,7 @@ function Catalogo() {
           step="0.01"
           min="0"
         />
-        {doveDi(form) === 'NATALE' && (
+        {doveDi(form) === 'NATALE' && !Object.keys(form.varianti).length && (
           <label className="mt-3 flex items-center gap-2 text-sm text-brand-darker/80">
             <input
               type="checkbox"
@@ -1035,7 +1099,65 @@ function Catalogo() {
             Il prodotto ha le taglie (S, M, L, XL)
           </label>
         )}
-        {doveDi(form) === 'NATALE' && form.conTaglie ? (
+        {Object.keys(form.varianti).length > 0 ? (
+          <div className="mt-3 text-sm">
+            <span className="mb-1 block font-semibold text-brand-darker">Scorta per spilla</span>
+            <span className="mb-2 block text-xs text-brand-darker/60">
+              Donazione per misura fissata nel codice:{' '}
+              {MISURE_SPILLE.map((m) => `${m.nome.toLowerCase()} € ${m.prezzo}`).join(', ')}. Il
+              prezzo qui sopra è solo indicativo. Campo vuoto = non in vendita.
+            </span>
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-brand/10">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-brand-bg text-brand-darker/70">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Soggetto</th>
+                    {MISURE_SPILLE.map((m) => (
+                      <th key={m.codice} className="w-14 px-1 py-1 text-center">
+                        {m.codice}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {SOGGETTI_SPILLE.map((sg) => (
+                    <tr key={sg.codice} className="border-t border-brand/5">
+                      <td className="px-2 py-1 text-brand-darker">{sg.nome}</td>
+                      {MISURE_SPILLE.map((m) => {
+                        const k = chiaveVariante(sg.codice, m.codice)
+                        const gia = editing?.vendutiVarianti[k] ?? 0
+                        return (
+                          <td key={k} className="px-1 py-1">
+                            <input
+                              type="number"
+                              min={String(gia)}
+                              step="1"
+                              value={form.varianti[k] ?? ''}
+                              placeholder="—"
+                              title={gia ? `${gia} già prese` : undefined}
+                              onChange={(e) =>
+                                setForm({ ...form, varianti: { ...form.varianti, [k]: e.target.value } })
+                              }
+                              className="w-full rounded border border-brand/20 px-1 py-1 text-center outline-none focus:border-brand"
+                            />
+                            {gia > 0 && (
+                              <span className="block text-center text-[10px] text-brand-darker/50">
+                                {gia} prese
+                              </span>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <span className="mt-1 block text-xs text-brand-darker/60">
+              Totale: {Object.values(variantiDaForm(form)).reduce((t, n) => t + n, 0)} spille.
+            </span>
+          </div>
+        ) : doveDi(form) === 'NATALE' && form.conTaglie ? (
           <div className="mt-3 text-sm">
             <span className="mb-1 block font-semibold text-brand-darker">Scorta per taglia</span>
             <div className="grid grid-cols-4 gap-2">
@@ -1154,6 +1276,7 @@ function Catalogo() {
                     </span>
                   </div>
                   {b.taglie && <DispTaglie b={b} />}
+                  {b.varianti && <DispVarianti b={b} />}
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <ActionBtn className="w-full" onClick={() => apriModifica(b)}>
                       Modifica
@@ -1216,6 +1339,7 @@ function Catalogo() {
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       {b.available}/{b.quantity}
                       {b.taglie && <DispTaglie b={b} />}
+                  {b.varianti && <DispVarianti b={b} />}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex flex-nowrap justify-end gap-1.5">

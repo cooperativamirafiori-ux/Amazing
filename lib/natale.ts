@@ -20,6 +20,8 @@
  * Nessuna env, nessuna dipendenza server: importabile anche dai componenti client.
  */
 
+import { descriviRighe, type RigaOrdine } from '@/lib/spille'
+
 export type Sezione = 'AMAZING' | 'NATALE'
 
 export const TAGLIE = ['S', 'M', 'L', 'XL'] as const
@@ -85,9 +87,17 @@ export function sommaTaglie(t: ScortaTaglie | null | undefined): number {
 
 /**
  * Descrizione leggibile di cosa è stato prenotato: "Maglietta · Taglia M · 3 pezzi".
+ * Per le spille (ordine a varianti) elenca le righe.
  * Per i beni classici (1 pezzo, nessuna taglia) è solo il nome.
  */
-export function descriviBene(p: { goodName: string; taglia?: string; pezzi?: number }): string {
+export function descriviBene(p: {
+  goodName: string
+  taglia?: string
+  pezzi?: number
+  righe?: RigaOrdine[]
+}): string {
+  // Ordine a varianti (spille): "Spille: Volpina piccola ×5, …"
+  if (p.righe?.length) return `${p.goodName}: ${descriviRighe(p.righe)}`
   const parti = [p.goodName]
   if (p.taglia) parti.push(`Taglia ${p.taglia}`)
   if (p.pezzi && p.pezzi > 1) parti.push(`${p.pezzi} pezzi`)

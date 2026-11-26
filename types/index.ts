@@ -1,6 +1,7 @@
 /** Tipi condivisi dell'app Amazing. */
 import type { Serie } from '@/lib/serie'
 import type { Sezione, ScortaTaglie, Taglia } from '@/lib/natale'
+import type { ScortaVarianti, RigaOrdine, RigaRichiesta } from '@/lib/spille'
 
 export interface Bene {
   /** ID item SharePoint (stringa) */
@@ -33,6 +34,15 @@ export interface Bene {
   vendutiTaglie: ScortaTaglie
   /** Disponibilità residua per taglia (scorta − venduti), {} se senza taglie. */
   disponibiliTaglie: ScortaTaglie
+  /**
+   * Scorta per variante soggetto|misura (colonna `Varianti`, spille di Natale),
+   * null se il bene non è a varianti. Se valorizzata, `quantity` = somma.
+   */
+  varianti: ScortaVarianti | null
+  /** Pezzi riservati/venduti per variante (colonna `VendutiVarianti`). */
+  vendutiVarianti: ScortaVarianti
+  /** Disponibilità residua per variante, {} se il bene non è a varianti. */
+  disponibiliVarianti: ScortaVarianti
   /** Disponibilità residua = quantity - venduti (mai < 0) */
   available: number
 }
@@ -70,6 +80,8 @@ export interface Prenotazione {
   taglia: string
   /** Pezzi dello stesso prodotto in questa prenotazione (1 per i beni classici). */
   pezzi: number
+  /** Righe dell'ordine per i beni a varianti (spille), [] per gli altri. */
+  righe: RigaOrdine[]
   /**
    * true se il bene e' a importo libero ("Donazione Libera"): niente da
    * consegnare. Calcolato dall'API admin incrociando il catalogo, non salvato
@@ -107,4 +119,6 @@ export interface NuovaPrenotazione {
   taglia?: Taglia
   /** Solo sezione Natale: numero di pezzi (default 1). */
   pezzi?: number
+  /** Solo beni a varianti (spille): quante per soggetto|misura. */
+  righe?: RigaRichiesta[]
 }

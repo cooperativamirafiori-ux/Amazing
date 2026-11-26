@@ -7,6 +7,8 @@ import { SERIE } from '@/lib/serie'
 import { codiceValido, normalizzaCodice, type TipoDonatore } from '@/lib/donatore'
 import { INFORMATIVA } from '@/lib/informativa'
 import { NATALE, TAGLIE, type Taglia } from '@/lib/natale'
+import { componiRighe, descriviRighe, totaleRighe, MISURE_SPILLE } from '@/lib/spille'
+import GrigliaSpille from './GrigliaSpille'
 
 const BONIFICO_IBAN = 'IT49O3609201600581979667619'
 const BONIFICO_BANCA = 'Qonto SA'
@@ -38,12 +40,21 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
     return disponibili.length === 1 ? disponibili[0] : null
   })
   const [pezzi, setPezzi] = useState(1)
+  // Spille (bene a varianti): quante per soggetto|misura, in un unico ordine.
+  const aVarianti = !!bene.varianti
+  const [qta, setQta] = useState<Record<string, number>>({})
+  const richiesta = Object.entries(qta)
+    .filter(([, n]) => n > 0)
+    .map(([chiave, n]) => ({ chiave, pezzi: n }))
+  const pezziSpille = richiesta.reduce((t, r) => t + r.pezzi, 0)
   const maxPezzi = Math.min(
     NATALE.maxPezzi,
     bene.taglie ? (taglia ? bene.disponibiliTaglie[taglia] ?? 0 : NATALE.maxPezzi) : bene.available
   )
   /** Donazione minima (o fissa) per l'ordine: prezzo a pezzo × pezzi. */
-  const minimo = Math.round(bene.price * pezzi * 100) / 100
+  const minimo = aVarianti
+    ? totaleRighe(componiRighe(richiesta))
+    : Math.round(bene.price * pezzi * 100) / 100
   // Enti e aziende possono donare solo dalla pagina /dona (serie MIR).
   const ammetteEnti = bene.canale === 'MIR'
   const [tipo, setTipo] = useState<TipoDonatore>('fisica')
@@ -80,7 +91,8 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
       return setErrore("Per procedere è necessario dichiarare di aver letto l'informativa privacy.")
     }
     if (taglieOfferte.length && !taglia) return setErrore('Scegli la taglia')
-    if (natale && (pezzi < 1 || pezzi > maxPezzi)) {
+    if (aVarianti && pezziSpille === 0) return setErrore('Scegli almeno una spilla')
+    if (natale && !aVarianti && (pezzi < 1 || pezzi > maxPezzi)) {
       return setErrore(`Puoi scegliere da 1 a ${maxPezzi} pezzi`)
     }
     if (bene.flexibleAmount && importo < minimo) {
@@ -98,7 +110,11 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
       importo: bene.flexibleAmount ? importo : minimo,
       metodo,
       tipoDonatore: ente ? 'giuridica' : 'fisica',
-      ...(natale ? { pezzi, ...(taglia ? { taglia } : {}) } : {}),
+      ...(aVarianti
+        ? { righe: richiesta }
+        : natale
+        ? { pezzi, ...(taglia ? { taglia } : {}) }
+        : {}),
       // Presa visione dell'informativa: il server rifiuta l'invio senza.
       presaVisione: privacy,
     }
@@ -166,9 +182,13 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
           {natale && (
             <Row
               label="Prodotto"
-              value={[bene.name, ok.taglia && `Taglia ${ok.taglia}`, `${ok.pezzi || pezzi} pz`]
-                .filter(Boolean)
-                .join(' · ')}
+              value={
+                ok.righe?.length
+                  ? descriviRighe(ok.righe)
+                  : [bene.name, ok.taglia && `Taglia ${ok.taglia}`, `${ok.pezzi || pezzi} pz`]
+                      .filter(Boolean)
+                      .join(' · ')
+              }
             />
           )}
           <Row label="Importo" value={`€ ${Number(ok.importo).toFixed(2)}`} />
@@ -204,13 +224,31 @@ export default function CheckoutForm({ bene }: { bene: Bene }) {
         <div>
           <h2 className="font-display text-xl font-bold text-brand-darker">{bene.name}</h2>
           <p className="text-sm text-brand-darker/70">
-            {bene.flexibleAmount ? 'Donazione minima' : 'Donazione'} € {bene.price.toFixed(2)}
-            {natale && ' a pezzo'}
+            {aVarianti ? (
+              <>
+                Donazione da € {Math.min(...MISURE_SPILLE.map((m) => m.prezzo)).toFixed(2)} a spilla
+              </>
+            ) : (
+              <>
+                {bene.flexibleAmount ? 'Donazione minima' : 'Donazione'} € {bene.price.toFixed(2)}
+                {natale && ' a pezzo'}
+              </>
+            )}
           </p>
         </div>
       </div>
 
-      {natale && (
+      {aVarianti && (
+        <GrigliaSpille
+          bene={bene}
+          qta={qta}
+          onChange={(k, n) => setQta((q) => ({ ...q, [k]: Math.max(0, n) }))}
+          totale={minimo}
+          pezzi={pezziSpille}
+        />
+      )}
+
+      {natale && !aVarianti && (
         <div className="mb-6 rounded-xl bg-brand-bg p-5">
           {taglieOfferte.length > 0 && (
             <fieldset>
